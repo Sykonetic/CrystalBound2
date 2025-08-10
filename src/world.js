@@ -6,7 +6,7 @@ const CLASS_CFG = {
   ranger: { hp:130, mp:40, speed:130, rollCD:0.8, iframe:0.40 },
   mage:   { hp:110, mp:70, speed:115, rollCD:0.9, iframe:0.40 },
   rogue:  { hp:120, mp:35, speed:145, rollCD:0.6, iframe:0.35 },
-  cleric: { hp:150, mp:90, speed:115, rollCD:0.9, iframe:0.40 } // healer
+  cleric: { hp:150, mp:90, speed:115, rollCD:0.9, iframe:0.40 }
 };
 
 export class World{
@@ -19,16 +19,14 @@ export class World{
     this.map = this.genMap();
     this.spawnInitial();
     this.boss = { x: this.w*0.7, y: this.h*0.3, hp: 1200, cd: 2.4 };
+    this.hoverTarget = null; // enemy under mouse
   }
 
-  // colored terrain + more obstacles
   genMap(){
     const m = new Uint8Array(this.gw*this.gh);
     for(let x=0;x<this.gw;x++){ m[x]=1; m[(this.gh-1)*this.gw+x]=1; }
     for(let y=0;y<this.gh;y++){ m[y*this.gw]=1; m[y*this.gw+this.gw-1]=1; }
-    // hand-placed
     this.rect(m,10,20,12,6); this.rect(m,28,8,8,10); this.rect(m,50,30,14,7);
-    // random groves
     for(let k=0;k<30;k++){ this.rect(m, rand(4,this.gw-10), rand(4,this.gh-10), rand(3,7), rand(2,6)); }
     return m;
   }
@@ -43,11 +41,10 @@ export class World{
       if(this.walkable(x,y)) this.enemies.push(new Enemy('Slime', x,y));
     }
   }
-
   addFloater(x,y,text,color='#e5e7eb'){ this.floaters.push({x,y,text,color,ttl:0.9}); }
 
   update(dt){
-    // boss telegraphs ( toned damage so no 1-shots )
+    // boss telegraphs
     if(this.boss){
       this.boss.cd -= dt;
       if(this.boss.cd<=0){
@@ -75,18 +72,27 @@ export class World{
       if(t.ttl<=0){ if(t.fire) t.fire(); this.telegraphs.splice(i,1); }
     }
 
-    // enemies AI + individual cooldown + low damage
+    // enemies AI
     for(let i=this.enemies.length-1;i>=0;i--){
       const e=this.enemies[i];
       const dir = Math.atan2(this.player.y-e.y, this.player.x-e.x);
       const spd = 60*dt;
       this.moveWithCollide(e, Math.cos(dir)*spd, Math.sin(dir)*spd);
       if(Math.hypot(e.x-this.player.x, e.y-this.player.y)<14){
-        if(!e._cd){ e._cd=0.7; this.player.hit(3, this); } // 3 dmg per hit
+        if(!e._cd){ e._cd=0.7; this.player.hit(3, this); }
       }
       if(e._cd) e._cd-=dt;
       if(e.hp<=0){ this.enemies.splice(i,1); this.player.xp+=20; this.addFloater(e.x,e.y,'+20 XP','#93c5fd'); }
     }
+
+    // hover target (nearest enemy under cursor within radius)
+    const m = this.game.mouse;
+    let best=null,bd=28;
+    for(const e of this.enemies){
+      const d = Math.hypot(e.x - m.wx, e.y - m.wy);
+      if(d<bd){ bd=d; best=e; }
+    }
+    this.hoverTarget = best;
 
     // floaters
     for(let i=this.floaters.length-1;i>=0;i--){
@@ -96,8 +102,8 @@ export class World{
     this.player.update(dt, this);
   }
 
-  draw(ctx){
-    // ground with color variation
+  draw(ctx, mouse){
+    // ground
     const g1='#0c1522', g2='#0b1b29';
     ctx.fillStyle=g1; ctx.fillRect(0,0,this.w,this.h);
     ctx.fillStyle=g2;
@@ -105,9 +111,7 @@ export class World{
     // obstacles
     for(let j=0;j<this.gh;j++){
       for(let i=0;i<this.gw;i++){
-        if(this.map[j*this.gw+i]){
-          ctx.fillStyle='#1b2135'; ctx.fillRect(i*this.tile,j*this.tile,this.tile,this.tile);
-        }
+        if(this.map[j*this.gw+i]){ ctx.fillStyle='#1b2135'; ctx.fillRect(i*this.tile,j*this.tile,this.tile,this.tile); }
       }
     }
     // telegraphs
@@ -116,12 +120,24 @@ export class World{
       if(t.type==='circle'){ ctx.beginPath(); ctx.arc(t.x,t.y,t.r,0,Math.PI*2); ctx.stroke(); }
       else { ctx.beginPath(); ctx.moveTo(t.x,t.y); ctx.lineTo(t.x+Math.cos(t.dir)*t.len, t.y+Math.sin(t.dir)*t.len); ctx.stroke(); }
     }
-    // enemies & boss
-    for(const e of this.enemies){ ctx.drawImage(ASSETS.slime, e.x-16, e.y-16, 32, 32); }
+    // enemies
+    for(const e of this.enemies){
+      if(this.hoverTarget===e){
+        ctx.strokeStyle='#fde68a'; ctx.lineWidth=2;
+        ctx.beginPath(); ctx.arc(e.x,e.y,14,0,Math.PI*2); ctx.stroke();
+      }
+      ctx.drawImage(ASSETS.slime, e.x-16, e.y-16, 32, 32);
+    }
+    // boss
     if(this.boss){ ctx.drawImage(ASSETS.boss, this.boss.x-16, this.boss.y-16, 32, 32); }
     // player
     const bob=Math.sin(performance.now()/120)*1.5;
     ctx.drawImage(ASSETS[this.player.className]||ASSETS.warrior, this.player.x-16, this.player.y-16+bob, 32, 32);
+
+    // reticle
+    ctx.strokeStyle='rgba(125,211,252,.9)'; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(mouse.wx, mouse.wy, 8, 0, Math.PI*2); ctx.stroke();
+
     // floaters
     ctx.font='12px monospace'; ctx.textAlign='center';
     for(const f of this.floaters){ ctx.fillStyle=f.color; ctx.fillText(f.text, f.x, f.y); }
@@ -151,12 +167,18 @@ export class Player{
     world.moveWithCollide(this, dx*spd*dt, dy*spd*dt);
   }
   attack(world){
-    const arc=Math.PI/2, reach=36, dmg=14;
+    // prefer enemy under cursor if present
+    const target = world.hoverTarget;
+    const reach=36, dmg=14, arc=Math.PI/2;
     let hits=0;
-    for(const e of world.enemies){
-      const ang=Math.atan2(e.y-this.y,e.x-this.x);
-      if(Math.abs(wrapAngle(ang - this.dir)) < arc/2 && dist(e,this)<=reach){
-        e.hp-=dmg; hits++; world.addFloater(e.x,e.y,String(dmg),'#fca5a5');
+    if(target && Math.hypot(target.x-this.x, target.y-this.y)<=reach){
+      target.hp -= dmg; hits++; world.addFloater(target.x,target.y,String(dmg),'#fca5a5');
+    } else {
+      for(const e of world.enemies){
+        const ang=Math.atan2(e.y-this.y,e.x-this.x);
+        if(Math.abs(wrapAngle(ang - this.dir)) < arc/2 && dist(e,this)<=reach){
+          e.hp-=dmg; hits++; world.addFloater(e.x,e.y,String(dmg),'#fca5a5');
+        }
       }
     }
     if(hits) log(`Slash hits ${hits}`);
