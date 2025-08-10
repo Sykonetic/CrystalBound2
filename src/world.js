@@ -343,19 +343,32 @@ export class Player {
   addStat(k){ if(this.points<=0) return; this.base[k]++; this.points--; this.applyClass(); this.updateStatsUI(); }
   resetStats(){ this.base={STR:6,AGI:6,INT:6,VIT:6,WIS:6}; this.points=5; this.applyClass(); this.updateStatsUI(); }
   updateStatsUI(){
-    const box=document.getElementById('statsBox'); if(!box) return;
+    const box = document.getElementById('statsBox');
+    if (!box) return;
+
     box.innerHTML = `
-      <div>Class: <b>${this.className.toUpperCase()}</b> • Points: <b>${this.points}</b></div>
-      <div class="muted" style="margin:6px 0 8px">VIT→HP (+8) • WIS→MP (+6) • AGI→Speed/Atk • STR/INT scale dmg (by class)</div>
-      <div>STR: ${this.base.STR} • AGI: ${this.base.AGI} • INT: ${this.base.INT} • VIT: ${this.base.VIT} • WIS: ${this.base.WIS}</div>
-      <div>HP: ${this.hp|0}/${this.maxhp} • MP: ${this.mp|0}/${this.maxmp} • Move: ${this.speed|0}</div>
+        <div>Class: <b>${this.className.toUpperCase()}</b> • Points: <b>${this.points}</b></div>
+        <div class="muted" style="margin:6px 0 8px">VIT⇒HP (+6) • WIS⇒MP (+6) • AGI⇒Speed/Atk • STR/INT scale dmg (by class)</div>
+        <div>STR: ${this.base.STR} • AGI: ${this.base.AGI} • INT: ${this.base.INT} • VIT: ${this.base.VIT} • WIS: ${this.base.WIS}</div>
+        <div>HP: ${this.hp[0]}/${this.maxhp} • MP: ${this.mp[0]}/${this.maxmp} • Move: ${this.speed[0]}</div>
     `;
-    document.getElementById('btnAddSTR')?.onclick=()=>this.addStat('STR');
-    document.getElementById('btnAddAGI')?.onclick=()=>this.addStat('AGI');
-    document.getElementById('btnAddINT')?.onclick=()=>this.addStat('INT');
-    document.getElementById('btnAddVIT')?.onclick=()=>this.addStat('VIT');
-    document.getElementById('btnAddWIS')?.onclick=()=>this.addStat('WIS');
-    document.getElementById('btnResetStats')?.onclick=()=>this.resetStats();
+
+    // safer event wiring (no optional chaining on assignment)
+    [
+        ['btnAddSTR', 'STR'],
+        ['btnAddAGI', 'AGI'],
+        ['btnAddINT', 'INT'],
+        ['btnAddVIT', 'VIT'],
+        ['btnAddWIS', 'WIS'],
+    ].forEach(([id, stat]) => {
+        const el = document.getElementById(id);
+        if (el) el.onclick = () => this.addStat(stat);
+    });
+
+    const resetBtn = document.getElementById('btnResetStats');
+    if (resetBtn) resetBtn.onclick = () => this.resetStats();
+}
+
   }
 
   // --- Skills ---
