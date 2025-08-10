@@ -102,7 +102,7 @@ loadAssets(() => {
         if(el) el.textContent=(m+"\n"+el.textContent).slice(0,9000);
     }
 
-    function setClassSafe(cls){
+    function setClassSafe(cls)
         const p = (game && game.world && game.world.player) || game?.player;
         if(!p){
             console.error('Player not ready yet; delaying class set');
