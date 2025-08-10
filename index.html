@@ -1,159 +1,136 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Crystalbound – Browser ARPG</title>
-  <style>
-    :root{--bg:#0e0f12;--panel:#171922;--muted:#7e8aa0;--text:#e8eefc;--hp:#ef4444;--mp:#22c55e;--xp:#60a5fa}
-    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,Arial}
-    #app{display:grid;grid-template-columns:1fr 350px;gap:12px;height:100vh;box-sizing:border-box;padding:12px}
-    .panel{background:#0f1117;border:1px solid #24273a;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.45);overflow:hidden}
-    canvas{width:100%;height:100%;display:block;background:#07090f}
-    .pad{padding:12px}
-    .row{display:flex;justify-content:space-between;align-items:center}
-    .muted{color:var(--muted)}
-    .list{max-height:220px;overflow:auto}
-    button,select,input{background:#111522;border:1px solid #262b40;border-radius:8px;color:var(--text);padding:8px 10px;font-weight:600;cursor:pointer}
-    .bar{height:8px;background:#1f2333;border-radius:999px;overflow:hidden}
-    .bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--hp),#fb7185)}
-    .mp>span{background:linear-gradient(90deg,var(--mp),#86efac)}
-    .xp>span{background:linear-gradient(90deg,var(--xp),#93c5fd)}
-    .log{font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.35;white-space:pre-wrap;max-height:240px;overflow:auto;background:#0a0d16;border-top:1px solid #232638;padding:8px}
-    .kbd{display:inline-block;background:#0c1020;border:1px solid #2a2f45;border-radius:6px;padding:2px 6px;font-family:monospace;font-weight:700}
-    .nums{display:flex;justify-content:space-between;font:12px/1.2 monospace;margin:4px 0 8px;color:#cbd5e1}
-    @media (max-width: 1100px){#app{grid-template-columns:1fr}}
+// src/index.js
+import { World } from './world.js';
 
-    /* Class picker overlay – blocks all input until a class is chosen */
-    #classOverlay{position:fixed;inset:0;background:rgba(5,7,12,.92);display:flex;align-items:center;justify-content:center;z-index:9999}
-    #classBox{background:#0f1117;border:1px solid #24314f;border-radius:16px;padding:18px;max-width:740px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,.6)}
-    #classGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:12px}
-    .cbtn{padding:14px;border:1px solid #2a2f45;border-radius:12px;text-align:center}
-    .cbtn:hover{filter:brightness(1.1)}
-  </style>
-</head>
-<body>
-<div id="app">
-  <div class="panel"><canvas id="view" width="960" height="540"></canvas></div>
-  <div class="panel pad">
-    <div class="row"><h3 style="margin:0">Crystalbound</h3><div class="muted">ARPG Prototype</div></div>
-    <div class="muted" style="margin-top:6px">
-      Move <span class="kbd">WASD / Arrows</span> • Run <span class="kbd">Shift (toggle)</span> • Dodge <span class="kbd">Space</span> • Attack <span class="kbd">J</span>
-    </div>
+// --- Canvas + game loop basics ---
+const canvas = document.getElementById('view');
+const ctx = canvas.getContext('2d');
 
-    <div style="margin-top:10px">
-      <div class="row nums"><span>HP: <span id="hpNum">0/0</span></span><span>MP: <span id="mpNum">0/0</span></span></div>
-      <div class="muted">HP</div><div class="bar"><span id="hpbar" style="width:100%"></span></div>
-      <div class="muted" style="margin-top:6px">MP</div><div class="bar mp"><span id="mpbar" style="width:100%"></span></div>
-      <div class="muted" style="margin-top:6px">XP</div><div class="bar xp"><span id="xpbar" style="width:0%"></span></div>
-    </div>
+const game = {
+  mouse: { x:0, y:0, wx:0, wy:0 },
+  keys:  Object.create(null),
+  running: true,
+  runToggle: false, // Shift toggles run
+};
 
-    <h4 style="margin-top:14px">Controls</h4>
-    <div id="controlsList" class="list"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
-      <button id="btnRebind">Rebind Selected</button>
-      <button id="btnResetBinds">Reset Binds</button>
-    </div>
+const world = new World(game);
 
-    <h4 style="margin-top:14px">Multiplayer</h4>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <input id="roomInput" placeholder="Room (e.g. my-party)"/>
-      <input id="wsInput" placeholder="ws://localhost:8080 (optional)"/>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
-      <button id="btnMPStart">Start / Join</button>
-      <button id="btnMPLeave">Leave</button>
-    </div>
+// camera (simple follow)
+function cam() {
+  const W = canvas.width, H = canvas.height;
+  const x = Math.max(0, Math.min(world.w - W, world.player.x - W/2));
+  const y = Math.max(0, Math.min(world.h - H, world.player.y - H/2));
+  return {x,y};
+}
 
-    <div id="log" class="log" style="margin-top:10px"></div>
-  </div>
-</div>
+// input
+window.addEventListener('keydown', (e)=>{
+  game.keys[e.key] = true;
 
-<!-- Class selection overlay (required) -->
-<div id="classOverlay">
-  <div id="classBox">
-    <h2 style="margin:0">Choose Your Class</h2>
-    <div class="muted" style="margin-top:4px">Pick a starting job to begin your adventure.</div>
-    <div id="classGrid">
-      <button class="cbtn" data-class="warrior">⚔️ Warrior<br><span class="muted">Bulky, slower roll</span></button>
-      <button class="cbtn" data-class="ranger">🏹 Ranger<br><span class="muted">Fast, stamina</span></button>
-      <button class="cbtn" data-class="mage">✨ Mage<br><span class="muted">Glass cannon</span></button>
-      <button class="cbtn" data-class="rogue">🗡️ Rogue<br><span class="muted">Fastest roll</span></button>
-      <button class="cbtn" data-class="cleric">🔆 Cleric<br><span class="muted">Heals & wards</span></button>
-    </div>
-  </div>
-</div>
+  // run as toggle
+  if (e.key === 'Shift') game.runToggle = !game.runToggle;
 
-<script type="module">
-  import { Game, loadAssets } from './src/engine.js';
-  import { setupUI } from './src/ui.js';
-  import { Net } from './src/net.js';
+  // quick items
+  if (e.key === 'q' || e.key === 'Q') { world.player.use('Potion', world); }
+  if (e.key === 'e' || e.key === 'E') { world.player.use('Ether', world); }
 
-  const canvas = document.getElementById('view');
+  // melee
+  if (e.key === 'j' || e.key === 'J') { world.player.attack(world); }
 
-  // Simple logger
-  function log(m){
-    const el=document.getElementById('log');
-    if(el) el.textContent=(m+"\n"+el.textContent).slice(0,9000);
+  // skills 1-4
+  if (e.key >= '1' && e.key <= '4') {
+    const slot = parseInt(e.key, 10);
+    world.player.cast(slot, world, game.mouse);
   }
 
-  loadAssets(() => {
-    const game = new Game(canvas);
-    const net  = new Net(game);
-    setupUI(game, net);
+  // interact
+  if (e.key === 'f' || e.key === 'F') world.tryInteract();
+});
 
-    // --- Require class pick BEFORE play: block all inputs while overlay is visible ---
-    const overlay   = document.getElementById('classOverlay');
-    let overlayLive = true;
+window.addEventListener('keyup', (e)=>{
+  delete game.keys[e.key];
+});
 
-    // While overlay is up, swallow key & mouse events so nothing moves/attacks
-    const blockKeys   = (e)=>{ if(overlayLive){ e.preventDefault(); e.stopPropagation(); } };
-    const blockMouse  = (e)=>{ if(overlayLive){ e.preventDefault(); e.stopPropagation(); } };
-    window.addEventListener('keydown', blockKeys, true);
-    window.addEventListener('keyup',   blockKeys, true);
-    canvas.addEventListener('mousedown', blockMouse, true);
-    canvas.addEventListener('mouseup',   blockMouse, true);
-    canvas.addEventListener('mousemove', blockMouse, true);
-    // (engine will still tick, but user can’t do anything until class is chosen)
+canvas.addEventListener('mousemove', (e)=>{
+  const rect = canvas.getBoundingClientRect();
+  game.mouse.x = e.clientX - rect.left;
+  game.mouse.y = e.clientY - rect.top;
+});
 
-    function finishOverlay(){
-      // remove event blockers
-      window.removeEventListener('keydown', blockKeys, true);
-      window.removeEventListener('keyup',   blockKeys, true);
-      canvas.removeEventListener('mousedown', blockMouse, true);
-      canvas.removeEventListener('mouseup',   blockMouse, true);
-      canvas.removeEventListener('mousemove', blockMouse, true);
-      // remove overlay node so it can’t block clicks
-      overlayLive=false;
-      if(overlay?.parentNode) overlay.parentNode.removeChild(overlay);
-    }
+canvas.addEventListener('mousedown', (e)=>{
+  // Left click = basic attack
+  if (e.button === 0) world.player.attack(world);
+});
 
-    // Robust class setter (works regardless of where the player is stored)
-    function setClassSafe(cls){
-      const p = (game && game.world && game.world.player) || game?.player;
-      if(!p){
-        // If player not ready yet (shouldn’t happen), try again next frame
-        requestAnimationFrame(()=>setClassSafe(cls));
-        return;
-      }
-      if(typeof p.setClass === 'function') p.setClass(cls);
-      else { p.className = cls; if(typeof p.applyClass==='function') p.applyClass(); }
-      finishOverlay();
-      log('Class set to ' + cls.toUpperCase());
-    }
+// Controls panel population (includes skill names)
+function refreshControlsPanel() {
+  const box = document.getElementById('controlsList');
+  if (!box) return;
+  const skillList = world.player.skills().map(s => `[${s.slot}] ${s.name}`).join(', ');
+  box.innerHTML = '';
 
-    // Hook up the buttons AFTER game exists
-    document.querySelectorAll('.cbtn').forEach(btn=>{
-      btn.addEventListener('click', ()=> setClassSafe(btn.getAttribute('data-class')));
-    });
+  const rows = [
+    ['Move', 'WASD / Arrows'],
+    ['Run', 'Shift (toggle)'],
+    ['Attack', 'Left Click or J'],
+    ['Dodge', 'Space'],
+    ['Interact', 'F'],
+    ['Skills', skillList],
+    ['Potion', 'Q'],
+    ['Ether', 'E'],
+  ];
 
-    // Hint
-    log('Pick a class to begin. WASD move • Shift toggles run • Left‑click attack • Right‑click dodge.');
-    game.start();
+  for (const [label, val] of rows) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.style.padding = '6px 8px';
+    row.style.border = '1px solid #242a43';
+    row.style.borderRadius = '8px';
+    row.style.marginBottom = '6px';
+    row.innerHTML = `<div><div class="title">${label}</div><div class="muted">${val}</div></div><div class="pill"> </div>`;
+    box.appendChild(row);
+  }
+}
+refreshControlsPanel();
 
-    // Expose for quick debugging
-    window.__game = game;
-  });
-</script>
-</body>
-</html>
+// main loop
+let last = performance.now();
+function loop(now){
+  if (!game.running) return;
+  const dt = Math.min(0.033, (now - last) / 1000);
+  last = now;
+
+  // convert mouse to world coords
+  const c = cam();
+  game.mouse.wx = c.x + game.mouse.x;
+  game.mouse.wy = c.y + game.mouse.y;
+
+  // movement
+  let dx = 0, dy = 0;
+  if (game.keys['w'] || game.keys['ArrowUp'])    dy -= 1;
+  if (game.keys['s'] || game.keys['ArrowDown'])  dy += 1;
+  if (game.keys['a'] || game.keys['ArrowLeft'])  dx -= 1;
+  if (game.keys['d'] || game.keys['ArrowRight']) dx += 1;
+
+  // dodge (Space)
+  if (game.keys[' ']) { world.player.dodge(world); delete game.keys[' ']; }
+
+  world.player.move(dx, dy, game.runToggle, dt, world);
+  world.update(dt);
+
+  // draw
+  ctx.save();
+  ctx.translate(-c.x, -c.y);
+  world.draw(ctx, game.mouse);
+  ctx.restore();
+
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// Update controls panel if class changes later
+window.addEventListener('change', (e)=>{
+  if (e.target && e.target.id === 'classSelect') {
+    world.player.setClass(e.target.value);
+    refreshControlsPanel();
+  }
+});
