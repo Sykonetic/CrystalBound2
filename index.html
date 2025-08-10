@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Crystalbound ARPG (FFV x D&D)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    :root{--bg:#0e0f12;--panel:#171922;--muted:#7e8aa0;--text:#e8eefc;--hp:#ef4444;--mp:#22c55e;--xp:#60a5fa}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-ui,Segoe UI,Roboto,Arial}
+    #app{display:grid;grid-template-columns:1fr 350px;gap:12px;height:100vh;box-sizing:border-box;padding:12px}
+    .panel{background:#0f1117;border:1px solid #24273a;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.45);overflow:hidden}
+    canvas{width:100%;height:100%;display:block;background:#07090f}
+    .pad{padding:12px}
+    .row{display:flex;justify-content:space-between;align-items:center}
+    .muted{color:var(--muted)}
+    .list{max-height:220px;overflow:auto}
+    button,select,input{background:#111522;border:1px solid #262b40;border-radius:8px;color:var(--text);padding:8px 10px;font-weight:600}
+    button{cursor:pointer}
+    .bar{height:8px;background:#1f2333;border-radius:999px;overflow:hidden}
+    .bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--hp),#fb7185)}
+    .mp>span{background:linear-gradient(90deg,var(--mp),#86efac)}
+    .xp>span{background:linear-gradient(90deg,var(--xp),#93c5fd)}
+    .log{font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.35;white-space:pre-wrap;max-height:240px;overflow:auto;background:#0a0d16;border-top:1px solid #232638;padding:8px}
+    .kbd{display:inline-block;background:#0c1020;border:1px solid #2a2f45;border-radius:6px;padding:2px 6px;font-family:monospace;font-weight:700}
+    @media (max-width: 1100px){#app{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+<div id="app">
+  <div class="panel"><canvas id="view" width="960" height="540"></canvas></div>
+  <div class="panel pad">
+    <div class="row"><h3 style="margin:0">Crystalbound</h3><div class="muted">ARPG Prototype</div></div>
+    <div class="muted" style="margin-top:6px">Move <span class="kbd">WASD</span> • Dodge <span class="kbd">Space</span> • Attack <span class="kbd">J</span> • Skills <span class="kbd">1–4</span></div>
+    <div style="margin-top:10px">
+      <div class="muted">HP</div><div class="bar"><span id="hpbar" style="width:100%"></span></div>
+      <div class="muted" style="margin-top:6px">MP</div><div class="bar mp"><span id="mpbar" style="width:100%"></span></div>
+      <div class="muted" style="margin-top:6px">XP</div><div class="bar xp"><span id="xpbar" style="width:0%"></span></div>
+    </div>
+    <h4>Controls</h4>
+    <div id="controlsList" class="list"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+      <button id="btnRebind">Rebind Selected</button>
+      <button id="btnResetBinds">Reset Binds</button>
+    </div>
+    <div class="muted" style="margin-top:6px">Select an action, click Rebind, then press a key.</div>
+    <h4 style="margin-top:12px">Multiplayer</h4>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <input id="roomInput" placeholder="Room (e.g. my-party)"/>
+      <input id="wsInput" placeholder="ws://localhost:8080 (optional)"/>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+      <button id="btnMPStart">Start / Join</button>
+      <button id="btnMPLeave">Leave</button>
+    </div>
+    <div id="log" class="log" style="margin-top:8px"></div>
+  </div>
+</div>
+<script type="module">
+  import { Game } from './src/engine.js';
+  import { setupUI } from './src/ui.js';
+  import { Net } from './src/net.js';
+  const canvas = document.getElementById('view');
+  const game = new Game(canvas);
+  const net = new Net(game);
+  setupUI(game, net);
+  game.start();
+  // Tiny self-test
+  if(!(game.world && game.player)) throw new Error('Init failed');
+  document.getElementById('log').textContent = 'Loaded. Use WASD to move, Space to dodge (i-frames), J to attack.';
+</script>
+</body>
+</html>
