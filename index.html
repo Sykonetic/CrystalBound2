@@ -23,11 +23,12 @@
     .kbd{display:inline-block;background:#0c1020;border:1px solid #2a2f45;border-radius:6px;padding:2px 6px;font-family:monospace;font-weight:700}
     @media (max-width: 1100px){#app{grid-template-columns:1fr}}
     /* class picker overlay */
-    #classOverlay{position:fixed;inset:0;background:rgba(5,7,12,.85);display:flex;align-items:center;justify-content:center}
-    #classBox{background:#0f1117;border:1px solid #24314f;border-radius:16px;padding:18px;max-width:720px;width:90%}
+    #classOverlay{position:fixed;inset:0;background:rgba(5,7,12,.9);display:flex;align-items:center;justify-content:center;z-index:9999}
+    #classBox{background:#0f1117;border:1px solid #24314f;border-radius:16px;padding:18px;max-width:740px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,.6)}
     #classGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:12px}
     .cbtn{padding:14px;border:1px solid #2a2f45;border-radius:12px;text-align:center}
     .cbtn:hover{filter:brightness(1.1)}
+    .nums{display:flex;justify-content:space-between;font:12px/1.2 monospace;margin:4px 0 8px;color:#cbd5e1}
   </style>
 </head>
 <body>
@@ -36,9 +37,11 @@
   <div class="panel pad">
     <div class="row"><h3 style="margin:0">Crystalbound</h3><div class="muted">ARPG Prototype</div></div>
     <div class="muted" style="margin-top:6px">
-      Move <span class="kbd">WASD / Arrows</span> • Run <span class="kbd">Shift</span> • Dodge <span class="kbd">Space</span> • Attack <span class="kbd">J</span>
+      Move <span class="kbd">WASD / Arrows</span> • Run <span class="kbd">Shift (toggle)</span> • Dodge <span class="kbd">Space</span> • Attack <span class="kbd">J</span>
     </div>
+
     <div style="margin-top:10px">
+      <div class="row nums"><span>HP: <span id="hpNum">0/0</span></span><span>MP: <span id="mpNum">0/0</span></span></div>
       <div class="muted">HP</div><div class="bar"><span id="hpbar" style="width:100%"></span></div>
       <div class="muted" style="margin-top:6px">MP</div><div class="bar mp"><span id="mpbar" style="width:100%"></span></div>
       <div class="muted" style="margin-top:6px">XP</div><div class="bar xp"><span id="xpbar" style="width:0%"></span></div>
@@ -65,14 +68,14 @@
   </div>
 </div>
 
-<!-- Class selection overlay -->
+<!-- Class selection overlay (blocks play until chosen) -->
 <div id="classOverlay">
   <div id="classBox">
     <h2 style="margin:0">Choose Your Class</h2>
-    <div class="muted" style="margin-top:4px">You can change later, but let’s start you off right.</div>
+    <div class="muted" style="margin-top:4px">You can change later at a crystal—but pick a starting job.</div>
     <div id="classGrid">
       <button class="cbtn" data-class="warrior">⚔️ Warrior<br><span class="muted">Bulky, slower roll</span></button>
-      <button class="cbtn" data-class="ranger">🏹 Ranger<br><span class="muted">Fast, good stamina</span></button>
+      <button class="cbtn" data-class="ranger">🏹 Ranger<br><span class="muted">Fast, stamina</span></button>
       <button class="cbtn" data-class="mage">✨ Mage<br><span class="muted">Glass cannon</span></button>
       <button class="cbtn" data-class="rogue">🗡️ Rogue<br><span class="muted">Fastest roll</span></button>
       <button class="cbtn" data-class="cleric">🔆 Cleric<br><span class="muted">Heals & wards</span></button>
@@ -92,7 +95,7 @@
     const net = new Net(game);
     setupUI(game, net);
 
-    // class picker
+    // class picker: blocks game until click
     const ov = document.getElementById('classOverlay');
     document.querySelectorAll('.cbtn').forEach(btn=>{
       btn.addEventListener('click', ()=>{
@@ -106,7 +109,7 @@
     function log(m){ const el=document.getElementById('log'); el.textContent=(m+"\n"+el.textContent).slice(0,9000); }
 
     document.getElementById('log').textContent =
-      'Pick a class to begin. WASD move • Shift run • Space dodge (i‑frames) • J attack.';
+      'Pick a class to begin. WASD move • Shift toggles run • Space dodge (i‑frames) • J attack.';
     game.start();
     window.__game = game;
   });
