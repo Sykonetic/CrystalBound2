@@ -2,6 +2,8 @@
 import { World } from './world.js';
 
 export const ASSETS = {};
+
+// --- sprite generator (no image files needed) ---
 export function loadAssets(done){
   function makeSprite(body, accent, weapon){
     const c=document.createElement('canvas'); c.width=c.height=32;
@@ -22,6 +24,7 @@ export function loadAssets(done){
   done();
 }
 
+// --- game loop / input ---
 export class Game {
   constructor(canvas){
     this.canvas = canvas;
@@ -34,8 +37,7 @@ export class Game {
 
     window.addEventListener('keydown', e=>{ this.keys[e.key] = true; });
     window.addEventListener('keyup',   e=>{ this.keys[e.key] = false; });
-    // Fix “stuck keys” (e.g., holding Shift and changing tabs)
-    window.addEventListener('blur', ()=>{ this.keys = {}; });
+    window.addEventListener('blur', ()=>{ this.keys = {}; }); // prevent “stuck keys”
 
     window.__game = this;
   }
@@ -76,8 +78,7 @@ export class Game {
 export const DEFAULT_BINDS = {
   up:['w','ArrowUp'], down:['s','ArrowDown'], left:['a','ArrowLeft'], right:['d','ArrowRight'],
   run:['Shift'], attack:['j','J'],
-  // Support both ' ' and 'Space' to be safe across browsers:
-  dodge:[' ','Space'],
+  dodge:[' ','Space'],   // support both variants of Spacebar
   skill1:['1'], skill2:['2'], skill3:['3'], skill4:['4']
 };
 
