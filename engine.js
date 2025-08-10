@@ -20,7 +20,7 @@ export class Game {
     });
     window.addEventListener('keyup', e=>{ this.keys[e.key] = false; });
 
-    // expose for UI
+    // expose for quick testing
     window.__game = this;
   }
   saveBinds(){ localStorage.setItem('cb_binds', JSON.stringify(this.binds)); }
@@ -33,8 +33,9 @@ export class Game {
     requestAnimationFrame(this.loop.bind(this));
   }
   update(dt){
-    const b = this.binds, k = this.keys, p = this.player;
-    let dx=0, dy=0;
+    const b = this.binds, k = this.keys;
+
+    let dx=0,dy=0;
     if(anyMatch(b.up, k)) dy-=1;
     if(anyMatch(b.down, k)) dy+=1;
     if(anyMatch(b.left, k)) dx-=1;
@@ -43,8 +44,8 @@ export class Game {
     this.player.move(dx, dy, run, dt, this.world);
 
     if(keyDownOnce(this, 'attack')) this.player.attack(this.world);
-    if(keyDownOnce(this, 'dodge')) this.player.dodge(this.world);
-    if(keyDownOnce(this, 'menu')) this.world.toggleMenu();
+    if(keyDownOnce(this, 'dodge'))  this.player.dodge(this.world);
+    if(keyDownOnce(this, 'menu'))   this.world.toggleMenu();
 
     this.world.update(dt);
   }
@@ -69,7 +70,6 @@ export function keyMatches(binds, action, e){
 }
 export function anyMatch(list, keys){ return (list||[]).some(k => keys[k]); }
 export function keyDownOnce(game, action){
-  // edge trigger: when key transitions to down, consume once per frame
   if(!game._edge) game._edge = {};
   const pressed = anyMatch(game.binds[action]||[], game.keys);
   const prev = game._edge[action]||false;
