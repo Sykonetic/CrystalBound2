@@ -3,14 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Crystalbound ARPG (FFV x D&D)</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <title>Crystalbound (FFV x D&D) – Browser ARPG</title>
   <style>
     :root{--bg:#0e0f12;--panel:#171922;--muted:#7e8aa0;--text:#e8eefc;--hp:#ef4444;--mp:#22c55e;--xp:#60a5fa}
-    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:'Inter',system-ui,Segoe UI,Roboto,Arial}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,Arial}
     #app{display:grid;grid-template-columns:1fr 350px;gap:12px;height:100vh;box-sizing:border-box;padding:12px}
-    .panel{background:#0f1117;border:1px solid #24273a;border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.45);overflow:hidden}
+    .panel{background:#0f1117;border:1px solid #24273a;border-radius:16px;box-shadow:0 10px 30px rgba(0,0,0,.45);overflow:hidden}
     canvas{width:100%;height:100%;display:block;background:#07090f}
     .pad{padding:12px}
     .row{display:flex;justify-content:space-between;align-items:center}
@@ -32,20 +30,25 @@
   <div class="panel"><canvas id="view" width="960" height="540"></canvas></div>
   <div class="panel pad">
     <div class="row"><h3 style="margin:0">Crystalbound</h3><div class="muted">ARPG Prototype</div></div>
-    <div class="muted" style="margin-top:6px">Move <span class="kbd">WASD</span> • Dodge <span class="kbd">Space</span> • Attack <span class="kbd">J</span> • Skills <span class="kbd">1–4</span></div>
+    <div class="muted" style="margin-top:6px">
+      Move <span class="kbd">WASD / Arrows</span> • Run <span class="kbd">Shift</span> • Dodge <span class="kbd">Space</span> • Attack <span class="kbd">J</span> • Skills <span class="kbd">1–4</span><br/>
+      Switch Class Sprites: <span class="kbd">F1</span> Warrior, <span class="kbd">F2</span> Ranger, <span class="kbd">F3</span> Mage, <span class="kbd">F4</span> Rogue
+    </div>
     <div style="margin-top:10px">
       <div class="muted">HP</div><div class="bar"><span id="hpbar" style="width:100%"></span></div>
       <div class="muted" style="margin-top:6px">MP</div><div class="bar mp"><span id="mpbar" style="width:100%"></span></div>
       <div class="muted" style="margin-top:6px">XP</div><div class="bar xp"><span id="xpbar" style="width:0%"></span></div>
     </div>
-    <h4>Controls</h4>
+
+    <h4 style="margin-top:14px">Controls</h4>
     <div id="controlsList" class="list"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
       <button id="btnRebind">Rebind Selected</button>
       <button id="btnResetBinds">Reset Binds</button>
     </div>
     <div class="muted" style="margin-top:6px">Select an action, click Rebind, then press a key.</div>
-    <h4 style="margin-top:12px">Multiplayer</h4>
+
+    <h4 style="margin-top:14px">Multiplayer</h4>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <input id="roomInput" placeholder="Room (e.g. my-party)"/>
       <input id="wsInput" placeholder="ws://localhost:8080 (optional)"/>
@@ -54,21 +57,46 @@
       <button id="btnMPStart">Start / Join</button>
       <button id="btnMPLeave">Leave</button>
     </div>
-    <div id="log" class="log" style="margin-top:8px"></div>
+
+    <div id="log" class="log" style="margin-top:10px"></div>
   </div>
 </div>
+
+<!-- Boot the game (imports the JS modules from /src) -->
 <script type="module">
-  import { Game } from './src/engine.js';
+  import { Game, loadAssets } from './src/engine.js';
   import { setupUI } from './src/ui.js';
   import { Net } from './src/net.js';
+
   const canvas = document.getElementById('view');
-  const game = new Game(canvas);
-  const net = new Net(game);
-  setupUI(game, net);
-  game.start();
-  // Tiny self-test
-  if(!(game.world && game.player)) throw new Error('Init failed');
-  document.getElementById('log').textContent = 'Loaded. Use WASD to move, Space to dodge (i-frames), J to attack.';
+
+  // Load generated sprites first, then start the game.
+  loadAssets(() => {
+    const game = new Game(canvas);
+    const net = new Net(game);
+    setupUI(game, net);
+
+    // Default class (you can change at runtime with F1–F4)
+    game.player.className = 'warrior';
+
+    // Quick sprite toggle to preview classes
+    window.addEventListener('keydown', (e) => {
+      const map = { F1:'warrior', F2:'ranger', F3:'mage', F4:'rogue' };
+      const chosen = map[e.key];
+      if (chosen) {
+        game.player.className = chosen;
+        const el = document.getElementById('log');
+        el.textContent = ('Class switched to ' + chosen.toUpperCase() + "\n" + el.textContent).slice(0,9000);
+      }
+    });
+
+    document.getElementById('log').textContent =
+      'Loaded. WASD move • Shift run • Space dodge (i‑frames) • J attack • F1–F4 swap class sprite.';
+    game.start();
+
+    // handy: inspect game in DevTools
+    window.__game = game;
+  });
 </script>
 </body>
 </html>
