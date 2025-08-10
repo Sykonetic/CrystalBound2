@@ -17,20 +17,10 @@ export function loadAssets(done){
   ASSETS.ranger  = makeSprite('#10b981','#86efac','#8b5cf6');
   ASSETS.mage    = makeSprite('#60a5fa','#93c5fd','#f472b6');
   ASSETS.rogue   = makeSprite('#f59e0b','#fbbf24','#374151');
-  ASSETS.cleric  = makeSprite('#facc15','#93c5fd','#a3e635');   // NEW cleric sprite
+  ASSETS.cleric  = makeSprite('#facc15','#93c5fd','#a3e635');
   ASSETS.slime   = makeSprite('#93c5fd','#60a5fa','#3b82f6');
   ASSETS.boss    = makeSprite('#ef4444','#f87171','#991b1b');
   done();
-}
-
-// Key handling now uses both .key and .code to prevent “Shift lock”
-function setKey(state, e){
-  state.key[e.key] = true;
-  state.code[e.code] = true;
-}
-function clearKey(state, e){
-  state.key[e.key] = false;
-  state.code[e.code] = false;
 }
 
 export class Game {
@@ -40,14 +30,18 @@ export class Game {
     this.keys = { key:{}, code:{} };
     this.dt = 0; this.last = 0;
     this.world = new World(this);
+    this.runToggle = false; // SHIFT toggles this
 
     window.addEventListener('keydown', e=>{
-      setKey(this.keys, e);
-      // prevent page scroll on arrows/space
+      this.keys.key[e.key]=true; this.keys.code[e.code]=true;
+      if(['Shift','ShiftLeft','ShiftRight'].includes(e.key) || e.code.startsWith('Shift')){
+        // toggle on keydown only
+        this.runToggle = !this.runToggle;
+      }
       if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ',"Space"].includes(e.key)) e.preventDefault();
     }, {passive:false});
-    window.addEventListener('keyup',   e=> clearKey(this.keys, e));
-    window.addEventListener('blur', ()=>{ this.keys = {key:{},code:{}}; }); // fixes stuck keys
+    window.addEventListener('keyup',   e=>{ this.keys.key[e.key]=false; this.keys.code[e.code]=false; });
+    window.addEventListener('blur', ()=>{ this.keys = {key:{},code:{}}; }); // prevents “stuck” after tab change
   }
 
   start(){ requestAnimationFrame(this.loop.bind(this)); }
@@ -60,18 +54,17 @@ export class Game {
   }
 
   update(dt){
-    const k = this.keys;
+    const k=this.keys;
     let dx=0,dy=0;
     if(k.key['w']||k.code['KeyW']||k.key['ArrowUp'])    dy-=1;
     if(k.key['s']||k.code['KeyS']||k.key['ArrowDown'])  dy+=1;
     if(k.key['a']||k.code['KeyA']||k.key['ArrowLeft'])  dx-=1;
     if(k.key['d']||k.code['KeyD']||k.key['ArrowRight']) dx+=1;
 
-    const run = !!(k.key['Shift']||k.code['ShiftLeft']||k.code['ShiftRight']);
     const attack = !!(k.key['j']||k.key['J']);
-    const dodge = !!(k.key[' ']||k.key['Space']);
+    const dodge  = !!(k.key[' ']||k.key['Space']);
 
-    this.world.player.move(dx, dy, run, dt, this.world);
+    this.world.player.move(dx, dy, this.runToggle, dt, this.world);
     if(attack && !this._atkHeld){ this.world.player.attack(this.world); }
     if(dodge  && !this._dodgeHeld){ this.world.player.dodge(this.world); }
     this._atkHeld = attack; this._dodgeHeld = dodge;
