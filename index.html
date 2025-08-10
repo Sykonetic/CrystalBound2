@@ -21,14 +21,15 @@
     .xp>span{background:linear-gradient(90deg,var(--xp),#93c5fd)}
     .log{font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.35;white-space:pre-wrap;max-height:240px;overflow:auto;background:#0a0d16;border-top:1px solid #232638;padding:8px}
     .kbd{display:inline-block;background:#0c1020;border:1px solid #2a2f45;border-radius:6px;padding:2px 6px;font-family:monospace;font-weight:700}
+    .nums{display:flex;justify-content:space-between;font:12px/1.2 monospace;margin:4px 0 8px;color:#cbd5e1}
     @media (max-width: 1100px){#app{grid-template-columns:1fr}}
-    /* class picker overlay */
-    #classOverlay{position:fixed;inset:0;background:rgba(5,7,12,.9);display:flex;align-items:center;justify-content:center;z-index:9999}
+
+    /* Class picker overlay – blocks all input until a class is chosen */
+    #classOverlay{position:fixed;inset:0;background:rgba(5,7,12,.92);display:flex;align-items:center;justify-content:center;z-index:9999}
     #classBox{background:#0f1117;border:1px solid #24314f;border-radius:16px;padding:18px;max-width:740px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,.6)}
     #classGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:12px}
     .cbtn{padding:14px;border:1px solid #2a2f45;border-radius:12px;text-align:center}
     .cbtn:hover{filter:brightness(1.1)}
-    .nums{display:flex;justify-content:space-between;font:12px/1.2 monospace;margin:4px 0 8px;color:#cbd5e1}
   </style>
 </head>
 <body>
@@ -68,11 +69,11 @@
   </div>
 </div>
 
-<!-- Class selection overlay (blocks play until chosen) -->
+<!-- Class selection overlay (required) -->
 <div id="classOverlay">
   <div id="classBox">
     <h2 style="margin:0">Choose Your Class</h2>
-    <div class="muted" style="margin-top:4px">You can change later at a crystal—but pick a starting job.</div>
+    <div class="muted" style="margin-top:4px">Pick a starting job to begin your adventure.</div>
     <div id="classGrid">
       <button class="cbtn" data-class="warrior">⚔️ Warrior<br><span class="muted">Bulky, slower roll</span></button>
       <button class="cbtn" data-class="ranger">🏹 Ranger<br><span class="muted">Fast, stamina</span></button>
@@ -84,43 +85,75 @@
 </div>
 
 <script type="module">
-import { Game } from './src/engine.js';
-import { Net } from './src/net.js';
-import { setupUI } from './src/ui.js';
+  import { Game, loadAssets } from './src/engine.js';
+  import { setupUI } from './src/ui.js';
+  import { Net } from './src/net.js';
 
-const canvas = document.getElementById('gameCanvas');
+  const canvas = document.getElementById('view');
 
-loadAssets(() => {
+  // Simple logger
+  function log(m){
+    const el=document.getElementById('log');
+    if(el) el.textContent=(m+"\n"+el.textContent).slice(0,9000);
+  }
+
+  loadAssets(() => {
     const game = new Game(canvas);
-    const net = new Net(game);
+    const net  = new Net(game);
     setupUI(game, net);
 
-    // ---- robust class picker ----
-    const ov = document.getElementById('classOverlay');
-    function log(m){
-        const el=document.getElementById('log');
-        if(el) el.textContent=(m+"\n"+el.textContent).slice(0,9000);
+    // --- Require class pick BEFORE play: block all inputs while overlay is visible ---
+    const overlay   = document.getElementById('classOverlay');
+    let overlayLive = true;
+
+    // While overlay is up, swallow key & mouse events so nothing moves/attacks
+    const blockKeys   = (e)=>{ if(overlayLive){ e.preventDefault(); e.stopPropagation(); } };
+    const blockMouse  = (e)=>{ if(overlayLive){ e.preventDefault(); e.stopPropagation(); } };
+    window.addEventListener('keydown', blockKeys, true);
+    window.addEventListener('keyup',   blockKeys, true);
+    canvas.addEventListener('mousedown', blockMouse, true);
+    canvas.addEventListener('mouseup',   blockMouse, true);
+    canvas.addEventListener('mousemove', blockMouse, true);
+    // (engine will still tick, but user can’t do anything until class is chosen)
+
+    function finishOverlay(){
+      // remove event blockers
+      window.removeEventListener('keydown', blockKeys, true);
+      window.removeEventListener('keyup',   blockKeys, true);
+      canvas.removeEventListener('mousedown', blockMouse, true);
+      canvas.removeEventListener('mouseup',   blockMouse, true);
+      canvas.removeEventListener('mousemove', blockMouse, true);
+      // remove overlay node so it can’t block clicks
+      overlayLive=false;
+      if(overlay?.parentNode) overlay.parentNode.removeChild(overlay);
     }
 
-    function setClassSafe(cls)
-        const p = (game && game.world && game.world.player) || game?.player;
-        if(!p){
-            console.error('Player not ready yet; delaying class set');
-            requestAnimationFrame(()=>setClassSafe(cls));
-            return;
-        }
-        if(typeof p.setClass === 'function') p.setClass(cls);
-        else { p.className = cls; if(typeof p.applyClass==='function') p.applyClass(); }
-
-        if(ov && ov.parentNode) ov.parentNode.removeChild(ov);
-        log('Class set to ' + cls.toUpperCase());
+    // Robust class setter (works regardless of where the player is stored)
+    function setClassSafe(cls){
+      const p = (game && game.world && game.world.player) || game?.player;
+      if(!p){
+        // If player not ready yet (shouldn’t happen), try again next frame
+        requestAnimationFrame(()=>setClassSafe(cls));
+        return;
+      }
+      if(typeof p.setClass === 'function') p.setClass(cls);
+      else { p.className = cls; if(typeof p.applyClass==='function') p.applyClass(); }
+      finishOverlay();
+      log('Class set to ' + cls.toUpperCase());
     }
 
+    // Hook up the buttons AFTER game exists
     document.querySelectorAll('.cbtn').forEach(btn=>{
-        btn.addEventListener('click', () => setClassSafe(btn.getAttribute('data-class')));
+      btn.addEventListener('click', ()=> setClassSafe(btn.getAttribute('data-class')));
     });
-});
-</script>
 
+    // Hint
+    log('Pick a class to begin. WASD move • Shift toggles run • Left‑click attack • Right‑click dodge.');
+    game.start();
+
+    // Expose for quick debugging
+    window.__game = game;
+  });
+</script>
 </body>
 </html>
