@@ -2,21 +2,14 @@
 import { World } from './world.js';
 
 export const ASSETS = {};
-
-// Creates simple 32x32 pixel sprites with class colors (no external PNGs needed)
 export function loadAssets(done){
   function makeSprite(body, accent, weapon){
     const c=document.createElement('canvas'); c.width=c.height=32;
     const g=c.getContext('2d');
-    // shadow
     g.fillStyle='rgba(0,0,0,0.35)'; g.beginPath(); g.ellipse(16,22,10,4,0,0,Math.PI*2); g.fill();
-    // body
     g.fillStyle=body; g.beginPath(); g.arc(16,16,10,0,Math.PI*2); g.fill();
-    // face-ish highlight
     g.fillStyle='#f3f4f6'; g.fillRect(14,12,4,2);
-    // accent (pauldrons/scarf)
     g.fillStyle=accent; g.fillRect(8,12,4,4); g.fillRect(20,12,4,4);
-    // weapon hint
     g.fillStyle=weapon; g.fillRect(22,18,8,2);
     return c;
   }
@@ -36,16 +29,15 @@ export class Game {
     this.keys = {};
     this.dt = 0; this.last = 0;
     this.binds = JSON.parse(localStorage.getItem('cb_binds')||'null') || structuredClone(DEFAULT_BINDS);
-    this.world = new World();           // world holds player, enemies, etc.
+    this.world = new World();
     this.player = this.world.player;
 
-    window.addEventListener('keydown', e=>{
-      this.keys[e.key] = true;
-      // skills 1–4 would go here later (per-class)
-    });
-    window.addEventListener('keyup', e=>{ this.keys[e.key] = false; });
+    window.addEventListener('keydown', e=>{ this.keys[e.key] = true; });
+    window.addEventListener('keyup',   e=>{ this.keys[e.key] = false; });
+    // Fix “stuck keys” (e.g., holding Shift and changing tabs)
+    window.addEventListener('blur', ()=>{ this.keys = {}; });
 
-    window.__game = this; // for quick console testing
+    window.__game = this;
   }
   saveBinds(){ localStorage.setItem('cb_binds', JSON.stringify(this.binds)); }
   start(){ requestAnimationFrame(this.loop.bind(this)); }
@@ -58,13 +50,11 @@ export class Game {
   }
   update(dt){
     const b = this.binds, k = this.keys;
-
     let dx=0,dy=0;
     if(anyMatch(b.up, k)) dy-=1;
     if(anyMatch(b.down, k)) dy+=1;
     if(anyMatch(b.left, k)) dx-=1;
     if(anyMatch(b.right, k)) dx+=1;
-
     const run = anyMatch(b.run, k);
     this.player.move(dx, dy, run, dt, this.world);
 
@@ -85,14 +75,16 @@ export class Game {
 
 export const DEFAULT_BINDS = {
   up:['w','ArrowUp'], down:['s','ArrowDown'], left:['a','ArrowLeft'], right:['d','ArrowRight'],
-  run:['Shift'], interact:['e','E'], attack:['j','J'], dodge:[' '],
+  run:['Shift'], attack:['j','J'],
+  // Support both ' ' and 'Space' to be safe across browsers:
+  dodge:[' ','Space'],
   skill1:['1'], skill2:['2'], skill3:['3'], skill4:['4']
 };
 
 export function anyMatch(list, keys){ return (list||[]).some(k => keys[k]); }
 export function keyDownOnce(game, action){
   if(!game._edge) game._edge = {};
-  const pressed = anyMatch(game.binds[action]||[], game.keys);
+  const pressed = anyMatch(game.binds[action]||DEFAULT_BINDS[action]||[], game.keys);
   const prev = game._edge[action]||false;
   game._edge[action] = pressed;
   return pressed && !prev;
