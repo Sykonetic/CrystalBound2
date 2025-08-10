@@ -1,6 +1,7 @@
 // src/engine.js
 import { World } from './world.js';
 
+/** ====== Assets (generated sprites, no image files) ====== */
 export const ASSETS = {};
 export function loadAssets(done){
   function makeSprite(body, accent, weapon){
@@ -23,45 +24,80 @@ export function loadAssets(done){
   done();
 }
 
+/** ====== Keybinds ====== */
+export const BIND_STORAGE_KEY = 'cb_keybinds';
+export const DEFAULT_BINDS = {
+  up:        ['w','ArrowUp'],
+  down:      ['s','ArrowDown'],
+  left:      ['a','ArrowLeft'],
+  right:     ['d','ArrowRight'],
+  runToggle: ['Shift'],                // toggle run
+  attack:    ['j','J','MouseLeft'],
+  dodge:     [' ','Space','MouseRight']
+};
+
+function clone(obj){ return JSON.parse(JSON.stringify(obj)); }
+function anyPressed(map, tokens){
+  // tokens is an array of candidate keys/codes like ['w','KeyW']
+  return tokens.some(t => map.key[t] || map.code[t] || map.mouse[t]);
+}
+
+/** ====== Game ====== */
 export class Game {
   constructor(canvas){
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.keys = { key:{}, code:{} };
+
+    // input state
+    this.keys  = { key:{}, code:{}, mouse:{} };
     this.mouse = { x:0,y:0, wx:0, wy:0, downL:false, downR:false };
+
+    // binds (from storage or defaults)
+    this.binds = JSON.parse(localStorage.getItem(BIND_STORAGE_KEY) || 'null') || clone(DEFAULT_BINDS);
+    this.runToggle = false; // SHIFT toggles this
+
     this.dt = 0; this.last = 0;
     this.world = new World(this);
-    this.runToggle = false; // SHIFT toggles run
 
-    // Keyboard
+    /** Keyboard */
     window.addEventListener('keydown', e=>{
       this.keys.key[e.key]=true; this.keys.code[e.code]=true;
-      if(e.key==='Shift' || e.code==='ShiftLeft' || e.code==='ShiftRight') this.runToggle = !this.runToggle;
+      if(this.binds.runToggle?.includes('Shift') && (e.key==='Shift' || e.code==='ShiftLeft' || e.code==='ShiftRight')){
+        this.runToggle = !this.runToggle;
+      }
       if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Space'].includes(e.key)) e.preventDefault();
     }, {passive:false});
     window.addEventListener('keyup',   e=>{ this.keys.key[e.key]=false; this.keys.code[e.code]=false; });
-    window.addEventListener('blur', ()=>{ this.keys = {key:{},code:{}}; this.mouse.downL=false; this.mouse.downR=false; });
 
-    // Mouse -> world coords
+    /** Mouse */
     const updateMouse = (e)=>{
       const r = this.canvas.getBoundingClientRect();
       this.mouse.x = (e.clientX - r.left) * (this.canvas.width / r.width);
       this.mouse.y = (e.clientY - r.top)  * (this.canvas.height / r.height);
-      // project to world using current camera (set each frame)
       this.mouse.wx = this.mouse.x + (this.camX||0);
       this.mouse.wy = this.mouse.y + (this.camY||0);
     };
     this.canvas.addEventListener('mousemove', updateMouse);
     this.canvas.addEventListener('mousedown', (e)=>{
       updateMouse(e);
-      if(e.button===0){ this.mouse.downL=true; }     // left
-      if(e.button===2){ this.mouse.downR=true; }     // right
+      if(e.button===0){ this.mouse.downL=true; this.keys.mouse['MouseLeft']=true; }
+      if(e.button===2){ this.mouse.downR=true; this.keys.mouse['MouseRight']=true; }
     });
     this.canvas.addEventListener('mouseup', (e)=>{
-      if(e.button===0){ this.mouse.downL=false; }
-      if(e.button===2){ this.mouse.downR=false; }
+      if(e.button===0){ this.mouse.downL=false; this.keys.mouse['MouseLeft']=false; }
+      if(e.button===2){ this.mouse.downR=false; this.keys.mouse['MouseRight']=false; }
     });
-    this.canvas.addEventListener('contextmenu', e=>e.preventDefault()); // disable context menu
+    this.canvas.addEventListener('contextmenu', e=>e.preventDefault()); // no context menu
+    window.addEventListener('blur', ()=>{
+      this.keys = { key:{}, code:{}, mouse:{} };
+      this.mouse.downL=false; this.mouse.downR=false;
+    });
+  }
+
+  /** Allow UI to push new binds */
+  setBinds(newBinds){
+    this.binds = clone(newBinds || DEFAULT_BINDS);
+    localStorage.setItem(BIND_STORAGE_KEY, JSON.stringify(this.binds));
   }
 
   start(){ requestAnimationFrame(this.loop.bind(this)); }
@@ -73,31 +109,42 @@ export class Game {
     requestAnimationFrame(this.loop.bind(this));
   }
 
-  update(dt){
-    const k=this.keys;
-    let dx=0,dy=0;
-    if(k.key['w']||k.code['KeyW']||k.key['ArrowUp'])    dy-=1;
-    if(k.key['s']||k.code['KeyS']||k.key['ArrowDown'])  dy+=1;
-    if(k.key['a']||k.code['KeyA']||k.key['ArrowLeft'])  dx-=1;
-    if(k.key['d']||k.code['KeyD']||k.key['ArrowRight']) dx+=1;
+  /** Helpers to test actions with current binds */
+  actionPressed(name){
+    const b = this.binds[name] || DEFAULT_BINDS[name] || [];
+    // map both key and code forms
+    const tokens = [];
+    b.forEach(v=>{
+      tokens.push(v);
+      if(v.length===1){ // letter -> also allow code form
+        const upper = v.toUpperCase();
+        const code = 'Key' + upper;
+        tokens.push(code);
+      }
+    });
+    return anyPressed(this.keys, tokens);
+  }
 
-    // Mouse aiming: rotate player towards cursor each tick
+  update(dt){
     const p = this.world.player;
+    // movement
+    let dx=0,dy=0;
+    if(this.actionPressed('up'))    dy-=1;
+    if(this.actionPressed('down'))  dy+=1;
+    if(this.actionPressed('left'))  dx-=1;
+    if(this.actionPressed('right')) dx+=1;
+
+    // mouse turns the player to face cursor
     const ang = Math.atan2(this.mouse.wy - p.y, this.mouse.wx - p.x);
     if(!Number.isNaN(ang)) p.dir = ang;
 
-    // Click to attack/dodge (J/Space still work)
-    const attackClick = this.mouse.downL;
-    const dodgeClick  = this.mouse.downR;
-    const attackKey   = !!(k.key['j']||k.key['J']);
-    const dodgeKey    = !!(k.key[' ']||k.key['Space']);
+    const attack = this.actionPressed('attack');
+    const dodge  = this.actionPressed('dodge');
 
-    this.world.player.move(dx, dy, this.runToggle, dt, this.world);
-
-    if((attackClick || attackKey) && !this._atkHeld){ this.world.player.attack(this.world); }
-    if((dodgeClick  || dodgeKey ) && !this._dodgeHeld){ this.world.player.dodge(this.world); }
-    this._atkHeld = attackClick || attackKey;
-    this._dodgeHeld = dodgeClick || dodgeKey;
+    p.move(dx, dy, this.runToggle, dt, this.world);
+    if(attack && !this._atkHeld){ p.attack(this.world); }
+    if(dodge  && !this._dodgeHeld){ p.dodge(this.world); }
+    this._atkHeld = attack; this._dodgeHeld = dodge;
 
     this.world.update(dt);
   }
@@ -107,7 +154,7 @@ export class Game {
     const p=this.world.player;
     this.camX = Math.max(0, Math.min(this.world.w - W, p.x - W/2));
     this.camY = Math.max(0, Math.min(this.world.h - H, p.y - H/2));
-    // keep mouse world coords in sync even if mouse is idle
+    // keep mouse world coords in sync even if idle
     this.mouse.wx = this.mouse.x + this.camX;
     this.mouse.wy = this.mouse.y + this.camY;
 
@@ -117,7 +164,7 @@ export class Game {
   }
 }
 
-// helpers
+/** Small helpers used by world.js too */
 export function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
 export function rand(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
 export function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
