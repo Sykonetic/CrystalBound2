@@ -1,46 +1,96 @@
-// minimal engine: draws a player you can move with WASD/Arrows
+// src/engine.js
+import { World } from './world.js';
+
+export const ASSETS = {};
+
+// --- sprite generator (no image files needed) ---
+export function loadAssets(done){
+  function makeSprite(body, accent, weapon){
+    const c=document.createElement('canvas'); c.width=c.height=32;
+    const g=c.getContext('2d');
+    g.fillStyle='rgba(0,0,0,0.35)'; g.beginPath(); g.ellipse(16,22,10,4,0,0,Math.PI*2); g.fill();
+    g.fillStyle=body; g.beginPath(); g.arc(16,16,10,0,Math.PI*2); g.fill();
+    g.fillStyle='#f3f4f6'; g.fillRect(14,12,4,2);
+    g.fillStyle=accent; g.fillRect(8,12,4,4); g.fillRect(20,12,4,4);
+    g.fillStyle=weapon; g.fillRect(22,18,8,2);
+    return c;
+  }
+  ASSETS.warrior = makeSprite('#eab308','#a78bfa','#9ca3af');
+  ASSETS.ranger  = makeSprite('#10b981','#86efac','#8b5cf6');
+  ASSETS.mage    = makeSprite('#60a5fa','#93c5fd','#f472b6');
+  ASSETS.rogue   = makeSprite('#f59e0b','#fbbf24','#374151');
+  ASSETS.slime   = makeSprite('#93c5fd','#60a5fa','#3b82f6');
+  ASSETS.boss    = makeSprite('#ef4444','#f87171','#991b1b');
+  done();
+}
+
+// --- game loop / input ---
 export class Game {
   constructor(canvas){
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.keys = {};
-    this.player = { x: 200, y: 200, r: 12, hp: 100, mp: 50, xp: 0 };
-    // key handling
-    window.addEventListener('keydown', e => this.keys[e.key] = true);
-    window.addEventListener('keyup',   e => this.keys[e.key] = false);
-    // expose for quick tests
+    this.dt = 0; this.last = 0;
+    this.binds = JSON.parse(localStorage.getItem('cb_binds')||'null') || structuredClone(DEFAULT_BINDS);
+    this.world = new World();
+    this.player = this.world.player;
+
+    window.addEventListener('keydown', e=>{ this.keys[e.key] = true; });
+    window.addEventListener('keyup',   e=>{ this.keys[e.key] = false; });
+    window.addEventListener('blur', ()=>{ this.keys = {}; }); // prevent “stuck keys”
+
     window.__game = this;
   }
+  saveBinds(){ localStorage.setItem('cb_binds', JSON.stringify(this.binds)); }
   start(){ requestAnimationFrame(this.loop.bind(this)); }
   loop(ts){
-    this.update(1/60);
+    this.dt = Math.min(0.033, (ts - this.last)/1000 || 0);
+    this.last = ts;
+    this.update(this.dt);
     this.draw();
     requestAnimationFrame(this.loop.bind(this));
   }
   update(dt){
-    const p = this.player; const spd = 140 * dt;
-    if(this.keys['w']||this.keys['ArrowUp'])    p.y -= spd;
-    if(this.keys['s']||this.keys['ArrowDown'])  p.y += spd;
-    if(this.keys['a']||this.keys['ArrowLeft'])  p.x -= spd;
-    if(this.keys['d']||this.keys['ArrowRight']) p.x += spd;
-    // clamp to canvas
-    p.x = Math.max(p.r, Math.min(this.canvas.width - p.r, p.x));
-    p.y = Math.max(p.r, Math.min(this.canvas.height - p.r, p.y));
-    // crude HUD updates so the bars move eventually
-    document.getElementById('hpbar').style.width = p.hp + '%';
-    document.getElementById('mpbar').style.width = p.mp + '%';
-    document.getElementById('xpbar').style.width = (p.xp%100) + '%';
+    const b = this.binds, k = this.keys;
+    let dx=0,dy=0;
+    if(anyMatch(b.up, k)) dy-=1;
+    if(anyMatch(b.down, k)) dy+=1;
+    if(anyMatch(b.left, k)) dx-=1;
+    if(anyMatch(b.right, k)) dx+=1;
+    const run = anyMatch(b.run, k);
+    this.player.move(dx, dy, run, dt, this.world);
+
+    if(keyDownOnce(this, 'attack')) this.player.attack(this.world);
+    if(keyDownOnce(this, 'dodge'))  this.player.dodge(this.world);
+
+    this.world.update(dt);
   }
   draw(){
-    const ctx = this.ctx;
-    ctx.fillStyle = '#0b1220'; // ground
-    ctx.fillRect(0,0,this.canvas.width,this.canvas.height);
-    // simple grid walls just to see something
-    ctx.fillStyle = '#1b2135';
-    for(let i=0;i<40;i++){ ctx.fillRect(i*24, 0, 24, 24); ctx.fillRect(i*24, this.canvas.height-24, 24, 24); }
-    for(let j=0;j<22;j++){ ctx.fillRect(0, j*24, 24, 24); ctx.fillRect(this.canvas.width-24, j*24, 24, 24); }
-    // player
-    ctx.fillStyle = '#eab308';
-    ctx.beginPath(); ctx.arc(this.player.x, this.player.y, this.player.r, 0, Math.PI*2); ctx.fill();
+    const ctx = this.ctx, W=this.canvas.width, H=this.canvas.height;
+    const camX = clamp(this.player.x - W/2, 0, Math.max(0, this.world.w - W));
+    const camY = clamp(this.player.y - H/2, 0, Math.max(0, this.world.h - H));
+    ctx.save(); ctx.clearRect(0,0,W,H); ctx.translate(-camX,-camY);
+    this.world.draw(ctx);
+    ctx.restore();
   }
 }
+
+export const DEFAULT_BINDS = {
+  up:['w','ArrowUp'], down:['s','ArrowDown'], left:['a','ArrowLeft'], right:['d','ArrowRight'],
+  run:['Shift'], attack:['j','J'],
+  dodge:[' ','Space'],   // support both variants of Spacebar
+  skill1:['1'], skill2:['2'], skill3:['3'], skill4:['4']
+};
+
+export function anyMatch(list, keys){ return (list||[]).some(k => keys[k]); }
+export function keyDownOnce(game, action){
+  if(!game._edge) game._edge = {};
+  const pressed = anyMatch(game.binds[action]||DEFAULT_BINDS[action]||[], game.keys);
+  const prev = game._edge[action]||false;
+  game._edge[action] = pressed;
+  return pressed && !prev;
+}
+export function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
+export function rand(a,b){ return Math.floor(Math.random()*(b-a+1))+a; }
+export function dist(a,b){ return Math.hypot(a.x-b.x, a.y-b.y); }
+export function wrapAngle(a){ while(a>Math.PI) a-=2*Math.PI; while(a<-Math.PI) a+=2*Math.PI; return a; }
