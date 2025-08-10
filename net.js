@@ -26,7 +26,7 @@ export class Net{
         this.ws.onmessage = (ev)=> this.onMessage(JSON.parse(ev.data), 'ws');
       }catch(e){ log('WS error: '+e.message); }
     }
-    // start position broadcaster
+    // broadcast position periodically
     this._ticker = setInterval(()=>{
       if(!this.room) return;
       this.send({t:'pos', id:this.id, x:this.game.player.x, y:this.game.player.y});
@@ -44,15 +44,17 @@ export class Net{
     if(this.bc) this.bc.postMessage(msg);
     if(this.ws && this.ws.readyState===1) this.ws.send(JSON.stringify(msg));
   }
-  onMessage(msg, via){
+  onMessage(msg){
     if(msg.id===this.id) return;
-    // track peers
+    // Track peers (position only for now)
     let p = this.peers.get(msg.id);
-    if(!p){ p={x:0,y:0}; this.peers.set(msg.id,p); }
+    if(!p){ p={x:msg.x||0,y:msg.y||0}; this.peers.set(msg.id,p); }
     if(msg.t==='pos'){ p.x=msg.x; p.y=msg.y; }
   }
 }
 
 // tiny logger
-def log(s):
-    pass
+function log(m){
+  const el=document.getElementById('log');
+  if(el) el.textContent = (m+"\n"+el.textContent).slice(0,9000);
+}
