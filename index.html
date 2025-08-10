@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Crystalbound (FFV x D&D) – Browser ARPG</title>
+  <title>Crystalbound – Browser ARPG</title>
   <style>
     :root{--bg:#0e0f12;--panel:#171922;--muted:#7e8aa0;--text:#e8eefc;--hp:#ef4444;--mp:#22c55e;--xp:#60a5fa}
     html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,Arial}
@@ -14,8 +14,7 @@
     .row{display:flex;justify-content:space-between;align-items:center}
     .muted{color:var(--muted)}
     .list{max-height:220px;overflow:auto}
-    button,select,input{background:#111522;border:1px solid #262b40;border-radius:8px;color:var(--text);padding:8px 10px;font-weight:600}
-    button{cursor:pointer}
+    button,select,input{background:#111522;border:1px solid #262b40;border-radius:8px;color:var(--text);padding:8px 10px;font-weight:600;cursor:pointer}
     .bar{height:8px;background:#1f2333;border-radius:999px;overflow:hidden}
     .bar>span{display:block;height:100%;background:linear-gradient(90deg,var(--hp),#fb7185)}
     .mp>span{background:linear-gradient(90deg,var(--mp),#86efac)}
@@ -23,6 +22,12 @@
     .log{font-family:ui-monospace,Consolas,monospace;font-size:12px;line-height:1.35;white-space:pre-wrap;max-height:240px;overflow:auto;background:#0a0d16;border-top:1px solid #232638;padding:8px}
     .kbd{display:inline-block;background:#0c1020;border:1px solid #2a2f45;border-radius:6px;padding:2px 6px;font-family:monospace;font-weight:700}
     @media (max-width: 1100px){#app{grid-template-columns:1fr}}
+    /* class picker overlay */
+    #classOverlay{position:fixed;inset:0;background:rgba(5,7,12,.85);display:flex;align-items:center;justify-content:center}
+    #classBox{background:#0f1117;border:1px solid #24314f;border-radius:16px;padding:18px;max-width:720px;width:90%}
+    #classGrid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:12px}
+    .cbtn{padding:14px;border:1px solid #2a2f45;border-radius:12px;text-align:center}
+    .cbtn:hover{filter:brightness(1.1)}
   </style>
 </head>
 <body>
@@ -31,8 +36,7 @@
   <div class="panel pad">
     <div class="row"><h3 style="margin:0">Crystalbound</h3><div class="muted">ARPG Prototype</div></div>
     <div class="muted" style="margin-top:6px">
-      Move <span class="kbd">WASD / Arrows</span> • Run <span class="kbd">Shift</span> • Dodge <span class="kbd">Space</span> • Attack <span class="kbd">J</span><br/>
-      Swap class sprite: <span class="kbd">F1</span> Warrior • <span class="kbd">F2</span> Ranger • <span class="kbd">F3</span> Mage • <span class="kbd">F4</span> Rogue
+      Move <span class="kbd">WASD / Arrows</span> • Run <span class="kbd">Shift</span> • Dodge <span class="kbd">Space</span> • Attack <span class="kbd">J</span>
     </div>
     <div style="margin-top:10px">
       <div class="muted">HP</div><div class="bar"><span id="hpbar" style="width:100%"></span></div>
@@ -61,6 +65,21 @@
   </div>
 </div>
 
+<!-- Class selection overlay -->
+<div id="classOverlay">
+  <div id="classBox">
+    <h2 style="margin:0">Choose Your Class</h2>
+    <div class="muted" style="margin-top:4px">You can change later, but let’s start you off right.</div>
+    <div id="classGrid">
+      <button class="cbtn" data-class="warrior">⚔️ Warrior<br><span class="muted">Bulky, slower roll</span></button>
+      <button class="cbtn" data-class="ranger">🏹 Ranger<br><span class="muted">Fast, good stamina</span></button>
+      <button class="cbtn" data-class="mage">✨ Mage<br><span class="muted">Glass cannon</span></button>
+      <button class="cbtn" data-class="rogue">🗡️ Rogue<br><span class="muted">Fastest roll</span></button>
+      <button class="cbtn" data-class="cleric">🔆 Cleric<br><span class="muted">Heals & wards</span></button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
   import { Game, loadAssets } from './src/engine.js';
   import { setupUI } from './src/ui.js';
@@ -73,23 +92,23 @@
     const net = new Net(game);
     setupUI(game, net);
 
-    // default class + hot-swap to preview sprites
-    game.player.className = 'warrior';
-    window.addEventListener('keydown', (e) => {
-      const map = { F1:'warrior', F2:'ranger', F3:'mage', F4:'rogue' };
-      const chosen = map[e.key];
-      if (chosen) {
-        game.player.className = chosen;
-        const el=document.getElementById('log');
-        el.textContent = ('Class switched to ' + chosen.toUpperCase() + "\n" + el.textContent).slice(0,9000);
-      }
+    // class picker
+    const ov = document.getElementById('classOverlay');
+    document.querySelectorAll('.cbtn').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const cls = btn.getAttribute('data-class');
+        game.player.setClass(cls);
+        ov.style.display='none';
+        log('Class set to ' + cls.toUpperCase());
+      });
     });
 
-    document.getElementById('log').textContent =
-      'Loaded. WASD move • Shift run • Space dodge (i‑frames) • J attack • F1–F4 swap class sprite.';
-    game.start();
+    function log(m){ const el=document.getElementById('log'); el.textContent=(m+"\n"+el.textContent).slice(0,9000); }
 
-    window.__game = game; // handy for console tests
+    document.getElementById('log').textContent =
+      'Pick a class to begin. WASD move • Shift run • Space dodge (i‑frames) • J attack.';
+    game.start();
+    window.__game = game;
   });
 </script>
 </body>
