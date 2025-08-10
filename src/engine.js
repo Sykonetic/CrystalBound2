@@ -28,20 +28,40 @@ export class Game {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
     this.keys = { key:{}, code:{} };
+    this.mouse = { x:0,y:0, wx:0, wy:0, downL:false, downR:false };
     this.dt = 0; this.last = 0;
     this.world = new World(this);
-    this.runToggle = false; // SHIFT toggles this
+    this.runToggle = false; // SHIFT toggles run
 
+    // Keyboard
     window.addEventListener('keydown', e=>{
       this.keys.key[e.key]=true; this.keys.code[e.code]=true;
-      if(['Shift','ShiftLeft','ShiftRight'].includes(e.key) || e.code.startsWith('Shift')){
-        // toggle on keydown only
-        this.runToggle = !this.runToggle;
-      }
-      if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ',"Space"].includes(e.key)) e.preventDefault();
+      if(e.key==='Shift' || e.code==='ShiftLeft' || e.code==='ShiftRight') this.runToggle = !this.runToggle;
+      if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' ','Space'].includes(e.key)) e.preventDefault();
     }, {passive:false});
     window.addEventListener('keyup',   e=>{ this.keys.key[e.key]=false; this.keys.code[e.code]=false; });
-    window.addEventListener('blur', ()=>{ this.keys = {key:{},code:{}}; }); // prevents “stuck” after tab change
+    window.addEventListener('blur', ()=>{ this.keys = {key:{},code:{}}; this.mouse.downL=false; this.mouse.downR=false; });
+
+    // Mouse -> world coords
+    const updateMouse = (e)=>{
+      const r = this.canvas.getBoundingClientRect();
+      this.mouse.x = (e.clientX - r.left) * (this.canvas.width / r.width);
+      this.mouse.y = (e.clientY - r.top)  * (this.canvas.height / r.height);
+      // project to world using current camera (set each frame)
+      this.mouse.wx = this.mouse.x + (this.camX||0);
+      this.mouse.wy = this.mouse.y + (this.camY||0);
+    };
+    this.canvas.addEventListener('mousemove', updateMouse);
+    this.canvas.addEventListener('mousedown', (e)=>{
+      updateMouse(e);
+      if(e.button===0){ this.mouse.downL=true; }     // left
+      if(e.button===2){ this.mouse.downR=true; }     // right
+    });
+    this.canvas.addEventListener('mouseup', (e)=>{
+      if(e.button===0){ this.mouse.downL=false; }
+      if(e.button===2){ this.mouse.downR=false; }
+    });
+    this.canvas.addEventListener('contextmenu', e=>e.preventDefault()); // disable context menu
   }
 
   start(){ requestAnimationFrame(this.loop.bind(this)); }
@@ -61,23 +81,38 @@ export class Game {
     if(k.key['a']||k.code['KeyA']||k.key['ArrowLeft'])  dx-=1;
     if(k.key['d']||k.code['KeyD']||k.key['ArrowRight']) dx+=1;
 
-    const attack = !!(k.key['j']||k.key['J']);
-    const dodge  = !!(k.key[' ']||k.key['Space']);
+    // Mouse aiming: rotate player towards cursor each tick
+    const p = this.world.player;
+    const ang = Math.atan2(this.mouse.wy - p.y, this.mouse.wx - p.x);
+    if(!Number.isNaN(ang)) p.dir = ang;
+
+    // Click to attack/dodge (J/Space still work)
+    const attackClick = this.mouse.downL;
+    const dodgeClick  = this.mouse.downR;
+    const attackKey   = !!(k.key['j']||k.key['J']);
+    const dodgeKey    = !!(k.key[' ']||k.key['Space']);
 
     this.world.player.move(dx, dy, this.runToggle, dt, this.world);
-    if(attack && !this._atkHeld){ this.world.player.attack(this.world); }
-    if(dodge  && !this._dodgeHeld){ this.world.player.dodge(this.world); }
-    this._atkHeld = attack; this._dodgeHeld = dodge;
+
+    if((attackClick || attackKey) && !this._atkHeld){ this.world.player.attack(this.world); }
+    if((dodgeClick  || dodgeKey ) && !this._dodgeHeld){ this.world.player.dodge(this.world); }
+    this._atkHeld = attackClick || attackKey;
+    this._dodgeHeld = dodgeClick || dodgeKey;
 
     this.world.update(dt);
   }
 
   draw(){
     const ctx = this.ctx, W=this.canvas.width, H=this.canvas.height;
-    const p=this.world.player, camX = Math.max(0, Math.min(this.world.w - W, p.x - W/2));
-    const camY = Math.max(0, Math.min(this.world.h - H, p.y - H/2));
-    ctx.save(); ctx.clearRect(0,0,W,H); ctx.translate(-camX,-camY);
-    this.world.draw(ctx);
+    const p=this.world.player;
+    this.camX = Math.max(0, Math.min(this.world.w - W, p.x - W/2));
+    this.camY = Math.max(0, Math.min(this.world.h - H, p.y - H/2));
+    // keep mouse world coords in sync even if mouse is idle
+    this.mouse.wx = this.mouse.x + this.camX;
+    this.mouse.wy = this.mouse.y + this.camY;
+
+    ctx.save(); ctx.clearRect(0,0,W,H); ctx.translate(-this.camX,-this.camY);
+    this.world.draw(ctx, this.mouse);
     ctx.restore();
   }
 }
