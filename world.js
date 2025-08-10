@@ -1,20 +1,18 @@
 // src/world.js
-import { clamp, rand, dist, wrapAngle } from './engine.js';
+import { clamp, rand, dist, wrapAngle, ASSETS } from './engine.js';
 
 export class World{
   constructor(){
     this.tile = 24; this.gw=80; this.gh=56;
     this.w = this.tile*this.gw; this.h=this.tile*this.gh;
-    this.enemies=[]; this.projectiles=[]; this.telegraphs=[]; this.traps=[];
-    this.menu=false;
+    this.enemies=[]; this.telegraphs=[];
     this.player = new Player(this);
-    this.map = this.genMapMeadow();
+    this.map = this.genMap();
     this.spawnInitial();
-    this.boss = { x: this.w*0.7, y: this.h*0.3, hp: 600, cd: 2.0 }; // simple boss
+    this.boss = { x: this.w*0.7, y: this.h*0.3, hp: 600, cd: 2.0 };
   }
-  toggleMenu(){ this.menu=!this.menu; }
 
-  genMapMeadow(){
+  genMap(){
     const m = new Uint8Array(this.gw*this.gh);
     // border walls
     for(let x=0;x<this.gw;x++){ m[x]=1; m[(this.gh-1)*this.gw + x]=1; }
@@ -24,36 +22,29 @@ export class World{
     return m;
   }
   rect(m,x,y,w,h){ for(let j=y;j<y+h;j++){ for(let i=x;i<x+w;i++){ m[j*this.gw+i]=1; } } }
-  tileAt(x,y){
-    const i=Math.floor(x/this.tile), j=Math.floor(y/this.tile);
-    if(i<0||j<0||i>=this.gw||j>=this.gh) return 1; return this.map[j*this.gw+i];
-  }
+  tileAt(x,y){ const i=Math.floor(x/this.tile), j=Math.floor(y/this.tile); if(i<0||j<0||i>=this.gw||j>=this.gh) return 1; return this.map[j*this.gw+i]; }
   walkable(x,y){ return this.tileAt(x,y)===0; }
-  moveWithCollide(obj,dx,dy){
-    let nx=obj.x+dx, ny=obj.y;
-    if(this.walkable(nx,ny)) obj.x=nx;
-    ny = obj.y+dy;
-    if(this.walkable(obj.x,ny)) obj.y=ny;
-  }
+  moveWithCollide(obj,dx,dy){ let nx=obj.x+dx, ny=obj.y; if(this.walkable(nx,ny)) obj.x=nx; ny=obj.y+dy; if(this.walkable(obj.x,ny)) obj.y=ny; }
+
   spawnInitial(){
     for(let i=0;i<10;i++){
       const x=rand(2,this.gw-3)*this.tile, y=rand(2,this.gh-3)*this.tile;
       if(this.walkable(x,y)) this.enemies.push(new Enemy('Slime', x,y));
     }
   }
+
   update(dt){
-    // Boss telegraphs
+    // telegraphed boss attacks (simple for now)
     if(this.boss){
       this.boss.cd -= dt;
       if(this.boss.cd<=0){
-        const kind = Math.random()<0.5 ? 'circle' : 'line';
-        if(kind==='circle'){
-          const t={type:'circle', x:this.player.x, y:this.player.y, r:80, ttl:1.0, dmg:30};
+        if(Math.random()<0.5){
+          const t={type:'circle', x:this.player.x, y:this.player.y, r:80, ttl:1.0};
           this.telegraphs.push(t);
           t.fire = ()=>{ if(dist({x:t.x,y:t.y}, this.player)<t.r){ this.player.hit(30, this); } };
         } else {
           const dir = Math.atan2(this.player.y-this.boss.y, this.player.x-this.boss.x);
-          const t={type:'line', x:this.boss.x, y:this.boss.y, dir, len:200, ttl:1.0, dmg:35};
+          const t={type:'line', x:this.boss.x, y:this.boss.y, dir, len:200, ttl:1.0};
           this.telegraphs.push(t);
           t.fire = ()=>{
             const ax=t.x, ay=t.y, bx=t.x+Math.cos(dir)*t.len, by=t.y+Math.sin(dir)*t.len;
@@ -63,7 +54,7 @@ export class World{
             if(Math.hypot(px-cx, py-cy) < 14) this.player.hit(35, this);
           };
         }
-        this.boss.cd = 2.5; // tough but fair
+        this.boss.cd = 2.5;
       }
     }
     for(let i=this.telegraphs.length-1;i>=0;i--){
@@ -71,7 +62,7 @@ export class World{
       if(t.ttl<=0){ if(t.fire) t.fire(); this.telegraphs.splice(i,1); }
     }
 
-    // enemies
+    // simple enemy AI
     for(let i=this.enemies.length-1;i>=0;i--){
       const e=this.enemies[i];
       const dir = Math.atan2(this.player.y-e.y, this.player.x-e.x);
@@ -83,44 +74,36 @@ export class World{
 
     this.player.update(dt, this);
   }
-  draw(ctx){
-    // solid ground (works on all browsers)
-    ctx.fillStyle = '#0b1220';
-    ctx.fillRect(0,0,this.w,this.h);
 
+  draw(ctx){
+    // solid ground
+    ctx.fillStyle = '#0b1220'; ctx.fillRect(0,0,this.w,this.h);
     // tiles
     for(let j=0;j<this.gh;j++){
       for(let i=0;i<this.gw;i++){
         if(this.map[j*this.gw+i]){
-          ctx.fillStyle='#1b2135';
-          ctx.fillRect(i*this.tile,j*this.tile,this.tile,this.tile);
+          ctx.fillStyle='#1b2135'; ctx.fillRect(i*this.tile,j*this.tile,this.tile,this.tile);
         }
       }
     }
-
-    // boss marker
-    if(this.boss){
-      ctx.fillStyle='#b45309';
-      ctx.beginPath(); ctx.arc(this.boss.x,this.boss.y,14,0,Math.PI*2); ctx.fill();
-    }
-
     // telegraphs
     ctx.strokeStyle='rgba(239,68,68,0.7)'; ctx.lineWidth=2;
     for(const t of this.telegraphs){
       if(t.type==='circle'){ ctx.beginPath(); ctx.arc(t.x,t.y,t.r,0,Math.PI*2); ctx.stroke(); }
       else { ctx.beginPath(); ctx.moveTo(t.x,t.y); ctx.lineTo(t.x+Math.cos(t.dir)*t.len, t.y+Math.sin(t.dir)*t.len); ctx.stroke(); }
     }
-
     // enemies
     for(const e of this.enemies){
-      ctx.fillStyle='#93c5fd'; ctx.beginPath(); ctx.arc(e.x,e.y,10,0,Math.PI*2); ctx.fill();
+      ctx.drawImage(ASSETS.slime, e.x-16, e.y-16, 32, 32);
     }
-
-    // player
+    // boss marker sprite
+    if(this.boss){
+      ctx.drawImage(ASSETS.boss, this.boss.x-16, this.boss.y-16, 32, 32);
+    }
+    // player sprite
     const bob=Math.sin(performance.now()/120)*1.5;
-    ctx.fillStyle = this.player.iframe>0 ? '#fef08a' : '#eab308';
-    ctx.beginPath(); ctx.arc(this.player.x,this.player.y+bob,10,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle='#fde68a'; ctx.lineWidth=2; ctx.stroke();
+    const key = this.player.className || 'warrior';
+    ctx.drawImage(ASSETS[key] || ASSETS.warrior, this.player.x-16, this.player.y-16+bob, 32, 32);
   }
 }
 
@@ -130,12 +113,9 @@ export class Player{
     this.dir = 0;
     this.hp=120; this.mp=40; this.maxhp=120; this.maxmp=40;
     this.xp=0; this.lv=1; this.speed=120;
-    this.iframe = 0;    // i-frames remaining
-    this.rollCD = 0;    // dodge cooldown
-  }
-  useSkill(i, world){
-    // placeholder: spend MP (we'll add real skills later)
-    if(this.mp>=5){ this.mp-=5; }
+    this.iframe = 0; // i-frames after dodge
+    this.rollCD = 0; // dodge cooldown
+    this.className = 'warrior';
   }
   move(dx,dy,run,dt,world){
     if(dx||dy){
@@ -157,24 +137,19 @@ export class Player{
   }
   dodge(world){
     if(this.rollCD>0) return;
-    const dash=120; // small dash
+    const dash=120;
     world.moveWithCollide(this, Math.cos(this.dir)*dash, Math.sin(this.dir)*dash);
     this.iframe = 0.5; this.rollCD = 0.8;
     log('Dodge roll! (i-frames)');
   }
-  hit(d, world){
+  hit(d){
     if(this.iframe>0) return;
     this.hp = Math.max(0, this.hp - d);
-    if(this.hp===0){ this.respawn(world); }
+    if(this.hp===0){ this.hp = Math.floor(this.maxhp*0.7); this.x = 12*24; this.y = 12*24; log('You were defeated. Respawned.'); }
   }
-  respawn(world){
-    this.x = world.tile*10; this.y = world.tile*10; this.hp = Math.floor(this.maxhp*0.7);
-    log('You were defeated. Respawned.');
-  }
-  update(dt, world){
+  update(dt){
     if(this.iframe>0) this.iframe -= dt;
     if(this.rollCD>0) this.rollCD -= dt;
-
     while(this.xp>=100*this.lv){ this.xp-=100*this.lv; this.lv++; this.maxhp+=10; this.hp=this.maxhp; log('Level up!'); }
     this.mp = Math.min(this.maxmp, this.mp + 4*dt);
 
@@ -191,8 +166,7 @@ export class Enemy{
   constructor(type,x,y){ this.type=type; this.x=x; this.y=y; this.hp=40; }
 }
 
-// tiny logger
-export function log(msg){
+function log(m){
   const el=document.getElementById('log');
-  el.textContent = (msg + "\n" + el.textContent).slice(0,9000);
+  if(el) el.textContent = (m+"\n"+el.textContent).slice(0,9000);
 }
