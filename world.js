@@ -7,38 +7,19 @@ export class World{
     this.w = this.tile*this.gw; this.h=this.tile*this.gh;
     this.enemies=[]; this.projectiles=[]; this.telegraphs=[]; this.traps=[];
     this.menu=false;
-    this.groundPat=null; this.wallPat=null;
     this.player = new Player(this);
     this.map = this.genMapMeadow();
-    this.makePatterns();
     this.spawnInitial();
-    // simple boss placeholder
-    this.boss = { x: this.w*0.7, y: this.h*0.3, hp: 600, cd: 2.0 };
+    this.boss = { x: this.w*0.7, y: this.h*0.3, hp: 600, cd: 2.0 }; // simple boss
   }
   toggleMenu(){ this.menu=!this.menu; }
-  makePatterns(){
-    const create = (c1,c2)=>{
-      const c=document.createElement('canvas'); c.width=c.height=this.tile; const g=c.getContext('2d');
-      g.fillStyle=c1; g.fillRect(0,0,this.tile,this.tile);
-      g.fillStyle=c2; g.fillRect(0,0,this.tile,2); g.fillRect(0,this.tile-2,this.tile,2);
-      return g.createPattern ? g.createPattern(c, 'repeat') : null;
-    };
-    // canvas 2d: createPattern on ctx, not g; fallback below
-    const off=document.createElement('canvas'); const g=off.getContext('2d'); off.width=off.height=this.tile;
-    g.fillStyle='#0e241b'; g.fillRect(0,0,this.tile,this.tile);
-    g.fillStyle='#123f2e'; g.fillRect(0,0,this.tile,2); g.fillRect(0,this.tile-2,this.tile,2);
-    this.groundPat = off;
-    const off2=document.createElement('canvas'); const g2=off2.getContext('2d'); off2.width=off2.height=this.tile;
-    g2.fillStyle='#1a1420'; g2.fillRect(0,0,this.tile,this.tile);
-    g2.fillStyle='#2c2540'; g2.fillRect(0,0,this.tile,2); g2.fillRect(0,this.tile-2,this.tile,2);
-    this.wallPat = off2;
-  }
+
   genMapMeadow(){
     const m = new Uint8Array(this.gw*this.gh);
-    // walls border
+    // border walls
     for(let x=0;x<this.gw;x++){ m[x]=1; m[(this.gh-1)*this.gw + x]=1; }
     for(let y=0;y<this.gh;y++){ m[y*this.gw]=1; m[y*this.gw + this.gw-1]=1; }
-    // some blocks
+    // a few blocks
     this.rect(m,10,20,12,6); this.rect(m,28,8,8,10); this.rect(m,50,30,14,7);
     return m;
   }
@@ -61,11 +42,10 @@ export class World{
     }
   }
   update(dt){
-    // boss telegraphs
+    // Boss telegraphs
     if(this.boss){
       this.boss.cd -= dt;
       if(this.boss.cd<=0){
-        // random pattern
         const kind = Math.random()<0.5 ? 'circle' : 'line';
         if(kind==='circle'){
           const t={type:'circle', x:this.player.x, y:this.player.y, r:80, ttl:1.0, dmg:30};
@@ -76,7 +56,6 @@ export class World{
           const t={type:'line', x:this.boss.x, y:this.boss.y, dir, len:200, ttl:1.0, dmg:35};
           this.telegraphs.push(t);
           t.fire = ()=>{
-            // distance from line segment
             const ax=t.x, ay=t.y, bx=t.x+Math.cos(dir)*t.len, by=t.y+Math.sin(dir)*t.len;
             const px=this.player.x, py=this.player.y;
             const t0 = Math.max(0, Math.min(1, ((px-ax)*(bx-ax)+(py-ay)*(by-ay))/((bx-ax)**2+(by-ay)**2) ));
@@ -87,33 +66,43 @@ export class World{
         this.boss.cd = 2.5; // tough but fair
       }
     }
-    // telegraph timing
     for(let i=this.telegraphs.length-1;i>=0;i--){
       const t=this.telegraphs[i]; t.ttl-=dt;
       if(t.ttl<=0){ if(t.fire) t.fire(); this.telegraphs.splice(i,1); }
     }
 
-    // enemies move towards player
+    // enemies
     for(let i=this.enemies.length-1;i>=0;i--){
       const e=this.enemies[i];
       const dir = Math.atan2(this.player.y-e.y, this.player.x-e.x);
       const spd = 70*dt;
       this.moveWithCollide(e, Math.cos(dir)*spd, Math.sin(dir)*spd);
-      if(Math.hypot(e.x-this.player.x, e.y-this.player.y)<14){
-        this.player.hit(8, this);
-      }
+      if(Math.hypot(e.x-this.player.x, e.y-this.player.y)<14) this.player.hit(8, this);
       if(e.hp<=0){ this.enemies.splice(i,1); this.player.xp+=20; }
     }
 
     this.player.update(dt, this);
   }
   draw(ctx){
-    // ground pattern fill
-    if(this.groundPat){ ctx.fillStyle = ctx.createPattern(this.groundPat, 'repeat'); ctx.fillRect(0,0,this.w,this.h); }
+    // solid ground (works on all browsers)
+    ctx.fillStyle = '#0b1220';
+    ctx.fillRect(0,0,this.w,this.h);
+
     // tiles
-    for(let j=0;j<this.gh;j++){ for(let i=0;i<this.gw;i++){ if(this.map[j*this.gw+i]){ ctx.fillStyle='#1b2135'; ctx.fillRect(i*this.tile,j*this.tile,this.tile,this.tile); } } }
+    for(let j=0;j<this.gh;j++){
+      for(let i=0;i<this.gw;i++){
+        if(this.map[j*this.gw+i]){
+          ctx.fillStyle='#1b2135';
+          ctx.fillRect(i*this.tile,j*this.tile,this.tile,this.tile);
+        }
+      }
+    }
+
     // boss marker
-    if(this.boss){ ctx.fillStyle='#b45309'; ctx.beginPath(); ctx.arc(this.boss.x,this.boss.y,14,0,Math.PI*2); ctx.fill(); }
+    if(this.boss){
+      ctx.fillStyle='#b45309';
+      ctx.beginPath(); ctx.arc(this.boss.x,this.boss.y,14,0,Math.PI*2); ctx.fill();
+    }
 
     // telegraphs
     ctx.strokeStyle='rgba(239,68,68,0.7)'; ctx.lineWidth=2;
@@ -141,11 +130,11 @@ export class Player{
     this.dir = 0;
     this.hp=120; this.mp=40; this.maxhp=120; this.maxmp=40;
     this.xp=0; this.lv=1; this.speed=120;
-    this.iframe = 0; // seconds of invulnerability
-    this.rollCD = 0;
+    this.iframe = 0;    // i-frames remaining
+    this.rollCD = 0;    // dodge cooldown
   }
   useSkill(i, world){
-    // stub: demo MP spend
+    // placeholder: spend MP (we'll add real skills later)
     if(this.mp>=5){ this.mp-=5; }
   }
   move(dx,dy,run,dt,world){
@@ -157,7 +146,6 @@ export class Player{
     world.moveWithCollide(this, dx*spd*dt, dy*spd*dt);
   }
   attack(world){
-    // simple melee cone hit
     const arc=Math.PI/2, reach=36, dmg=18;
     let hits=0;
     for(const e of world.enemies){
@@ -169,8 +157,7 @@ export class Player{
   }
   dodge(world){
     if(this.rollCD>0) return;
-    // dash forward with i-frames
-    const dash=120;
+    const dash=120; // small dash
     world.moveWithCollide(this, Math.cos(this.dir)*dash, Math.sin(this.dir)*dash);
     this.iframe = 0.5; this.rollCD = 0.8;
     log('Dodge roll! (i-frames)');
@@ -181,17 +168,16 @@ export class Player{
     if(this.hp===0){ this.respawn(world); }
   }
   respawn(world){
-    this.x = world.tile*10; this.y=world.tile*10; this.hp = Math.floor(this.maxhp*0.7);
+    this.x = world.tile*10; this.y = world.tile*10; this.hp = Math.floor(this.maxhp*0.7);
     log('You were defeated. Respawned.');
   }
   update(dt, world){
     if(this.iframe>0) this.iframe -= dt;
     if(this.rollCD>0) this.rollCD -= dt;
-    // level up
+
     while(this.xp>=100*this.lv){ this.xp-=100*this.lv; this.lv++; this.maxhp+=10; this.hp=this.maxhp; log('Level up!'); }
-    // basic regen
     this.mp = Math.min(this.maxmp, this.mp + 4*dt);
-    // update HUD
+
     const hpbar = document.getElementById('hpbar');
     const mpbar = document.getElementById('mpbar');
     const xpbar = document.getElementById('xpbar');
