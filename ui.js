@@ -1,9 +1,11 @@
 // src/ui.js
-import { DEFAULT_BINDS, keyMatches } from './engine.js';
+import { DEFAULT_BINDS } from './engine.js';
 
 export function setupUI(game, net){
+  const log = (m)=>{ const el=document.getElementById('log'); el.textContent = (m+"\n"+el.textContent).slice(0,8000); };
   const list = document.getElementById('controlsList');
   let selected = null;
+
   const render = ()=>{
     list.innerHTML='';
     Object.entries(game.binds).forEach(([action,keys])=>{
@@ -21,7 +23,7 @@ export function setupUI(game, net){
 
   document.getElementById('btnResetBinds').onclick=()=>{
     game.binds = structuredClone(DEFAULT_BINDS);
-    game.saveBinds(); render();
+    game.saveBinds(); render(); log('Binds reset.');
   };
   document.getElementById('btnRebind').onclick=()=>{
     if(!selected){ log('Select an action first.'); return; }
@@ -30,8 +32,7 @@ export function setupUI(game, net){
       e.preventDefault();
       game.binds[selected]=[e.key];
       window.removeEventListener('keydown', once, true);
-      game.saveBinds(); render();
-      log(selected+' bound to '+e.key);
+      game.saveBinds(); render(); log(selected+' bound to '+e.key);
     };
     window.addEventListener('keydown', once, true);
   };
@@ -43,10 +44,4 @@ export function setupUI(game, net){
     net.join(room, ws);
   };
   document.getElementById('btnMPLeave').onclick=()=> net.leave();
-}
-
-// tiny logger (shared with world)
-function log(msg){
-  const el=document.getElementById('log');
-  el.textContent = (msg + "\n" + el.textContent).slice(0,9000);
 }
