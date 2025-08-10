@@ -3,11 +3,11 @@ import { clamp, rand, dist, wrapAngle, ASSETS } from './engine.js';
 
 /* ===== Class tuning (attack speed/dmg + dodge frames) ===== */
 const CLASS_CFG = {
-  warrior: { hp:190, mp:30,  speed:115, rollCD:1.0, iframe:0.45, atkDelay:0.55, baseDmg:22, scale:'STR' },
-  ranger:  { hp:135, mp:40,  speed:132, rollCD:0.8, iframe:0.40, atkDelay:0.38, baseDmg:16, scale:'AGI' },
-  mage:    { hp:115, mp:80,  speed:118, rollCD:0.9, iframe:0.40, atkDelay:0.60, baseDmg:10, scale:'INT' },
-  rogue:   { hp:125, mp:35,  speed:146, rollCD:0.6, iframe:0.35, atkDelay:0.30, baseDmg:14, scale:'AGI' },
-  cleric:  { hp:155, mp:95,  speed:118, rollCD:0.9, iframe:0.40, atkDelay:0.50, baseDmg:12, scale:'WIS' }
+  warrior: { hp:190, mp:30,  speed:115, rollCD:1.4, iframe:0.45, atkDelay:0.55, baseDmg:22, scale:'STR' },
+  ranger:  { hp:135, mp:40,  speed:132, rollCD:1.1, iframe:0.40, atkDelay:0.38, baseDmg:16, scale:'AGI' },
+  mage:    { hp:115, mp:80,  speed:118, rollCD:1.2, iframe:0.40, atkDelay:0.60, baseDmg:10, scale:'INT' },
+  rogue:   { hp:125, mp:35,  speed:146, rollCD:0.9, iframe:0.35, atkDelay:0.30, baseDmg:14, scale:'AGI' },
+  cleric:  { hp:155, mp:95,  speed:118, rollCD:1.2, iframe:0.40, atkDelay:0.50, baseDmg:12, scale:'WIS' }
 };
 
 /* ===== Basic consumables ===== */
@@ -43,7 +43,7 @@ export class World {
 
     // Boss as an enemy
     const boss = new Enemy('Boss', this.w*0.83, this.h*0.28);
-    boss.isBoss = true; boss.hp = 1400; boss.speed = 48; boss.teleCd = 2.4;
+    boss.isBoss = true; boss.hp = 1400; boss.speed = 54; boss.teleCd = 2.4;
     this.enemies.push(boss);
 
     this.hoverTarget = null;
@@ -129,31 +129,44 @@ export class World {
     const p=this.player;
     for(let i=this.enemies.length-1;i>=0;i--){
       const e=this.enemies[i];
+
+      // status timers
+      if(e.rootT>0){ e.rootT-=dt; if(e.rootT<0) e.rootT=0; }
+      if(e.slowT>0){ e.slowT-=dt; if(e.slowT<0) e.slowT=0; }
+
       const dToP = Math.hypot(p.x-e.x, p.y-e.y);
 
-      // stealth & detection
-      const detectRadius = p.stealth>0 ? 0 : (e.isBoss ? 9999 : 240);
+      // stealth & detection (boss has a big but finite range)
+      const bossSee = 520;
+      const baseSee = e.isBoss ? bossSee : 240;
+      const detectRadius = (p.stealth>0) ? 0 : baseSee;
+
       if(!e.aggro && dToP < detectRadius) e.aggro = true;
       if(e.aggro && dToP > 380 && !e.isBoss) e.aggro = false;
 
-      // move toward player if aggro
+      // move toward player if aggro and not rooted
       if(e.aggro){
         const dir = Math.atan2(p.y-e.y, p.x-e.x);
-        const sp = (e.isBoss? e.speed : 60) * dt;
-        this.moveWithCollide(e, Math.cos(dir)*sp, Math.sin(dir)*sp);
+        let sp = (e.isBoss? e.speed : 60);
+        if(e.slowT>0) sp *= 0.6;
+        if(e.rootT<=0){
+          this.moveWithCollide(e, Math.cos(dir)*sp*dt, Math.sin(dir)*sp*dt);
+        }
       }
 
-      // boss telegraphs
+      // boss telegraphs (only if player within bossSee)
       if(e.isBoss){
         e.teleCd -= dt;
-        if(e.teleCd <= 0){
+        if(dToP <= bossSee && e.teleCd <= 0){
           if(Math.random() < 0.5){
+            // circle AoE around player's position (range-bound)
             const tel = {type:'circle', x:p.x, y:p.y, r:95, ttl:1.2, dmg:16};
             tel.fire = () => { if(Math.hypot(p.x-tel.x,p.y-tel.y) < tel.r) p.hit(tel.dmg,this); };
             this.telegraphs.push(tel);
           }else{
+            // line in boss->player direction with finite len
             const d = Math.atan2(p.y-e.y, p.x-e.x);
-            const tel = {type:'line', x:e.x, y:e.y, dir:d, len:300, ttl:1.1, dmg:20};
+            const tel = {type:'line', x:e.x, y:e.y, dir:d, len:280, ttl:1.1, dmg:20};
             tel.fire = () => {
               const ax=tel.x, ay=tel.y, bx=ax+Math.cos(d)*tel.len, by=ay+Math.sin(d)*tel.len;
               const px=p.x, py=p.y;
@@ -198,6 +211,17 @@ export class World {
         if(Math.hypot(e.x-pr.x, e.y-pr.y) < (pr.radius||12)){
           e.hp -= pr.dmg;
           this.addFloater(e.x,e.y,String(pr.dmg), pr.color||'#fca5a5');
+
+          // Fireball splash: if tagged projectile has splashR, apply AoE
+          if(pr.splashR){
+            for(const e2 of this.enemies){
+              if(e2!==e && Math.hypot(e2.x-pr.x, e2.y-pr.y) <= pr.splashR){
+                e2.hp -= Math.floor(pr.dmg*0.6);
+                this.addFloater(e2.x,e2.y,String(Math.floor(pr.dmg*0.6)),'#fb7185');
+              }
+            }
+          }
+
           if(!pr.pierce){ this.projectiles.splice(i,1); }
           break;
         }
@@ -297,12 +321,15 @@ export class World {
 /* ======================================================================= */
 export class Player {
   constructor(world){
-    // random spawn per class/biome (start near thirds)
+    // random walkable spawn anywhere on the map (not just thirds)
+    let tries = 0;
+    do{
+      this.x = rand(2, world.gw-3)*world.tile;
+      this.y = rand(2, world.gh-3)*world.tile;
+      tries++;
+    } while(!world.walkable(this.x, this.y) && tries < 200);
+
     this.className = 'warrior';
-    const spawnThird = ['warrior','cleric'].includes(this.className)?0 : (['ranger','rogue'].includes(this.className)?1:2);
-    const thirdX = world.w/3 * (spawnThird + 0.5);
-    this.x = clamp(thirdX + rand(-80,80), 40, world.w-40);
-    this.y = clamp(world.h*0.6 + rand(-80,80), 40, world.h-40);
 
     // attributes & points
     this.base = { STR:6, AGI:6, INT:6, VIT:6, WIS:6 };
@@ -345,13 +372,13 @@ export class Player {
   updateStatsUI(){
     const box=document.getElementById('statsBox'); if(!box) return;
     box.innerHTML = `
-      <div>Class: <b>${this.className.toUpperCase()}</b> • Points: <b>${this.points}</b></div>
+      <div>Class: <b>${this.className.toUpperCase()}</b> • LV <b>${this.lv}</b> • Points: <b>${this.points}</b></div>
       <div class="muted" style="margin:6px 0 8px">VIT→HP (+8) • WIS→MP (+6) • AGI→Speed/Atk • STR/INT scale dmg (by class)</div>
       <div>STR: ${this.base.STR} • AGI: ${this.base.AGI} • INT: ${this.base.INT} • VIT: ${this.base.VIT} • WIS: ${this.base.WIS}</div>
       <div>HP: ${Math.floor(this.hp)}/${this.maxhp} • MP: ${Math.floor(this.mp)}/${this.maxmp} • Move: ${Math.floor(this.speed)}</div>
     `;
 
-    // bind buttons safely (no optional chaining on assignment)
+    // bind buttons safely
     [
       ['btnAddSTR','STR'],
       ['btnAddAGI','AGI'],
@@ -366,26 +393,26 @@ export class Player {
     if (resetBtn) resetBtn.onclick = () => this.resetStats();
   }
 
-  // --- Skills ---
+  // --- Skills (Ranger longest range; others shorter) ---
   skills(){
-    const far=520, long=420, mid=280;
+    const far=520, long=420, mid=280, short=200;
     return {
       warrior:[
         {slot:1,name:'Cleave',      cost:0,  cd:4.0, type:'melee', range:40},
-        {slot:2,name:'Guard Dash',  cost:0,  cd:6.0, type:'dash',  range:80},
+        {slot:2,name:'Guard Dash',  cost:0,  cd:6.5, type:'dash',  range:80},
       ],
       ranger:[
         {slot:1,name:'Aimed Shot',  cost:6,  cd:0.9, type:'shot', speed:360, range:far,  dmg:18, color:'#a7f3d0'},
         {slot:2,name:'Snare Trap',  cost:8,  cd:4.0, type:'trap', range:70,  dmg:14},
       ],
       mage:[
-        {slot:1,name:'Fireball',    cost:14, cd:1.5, type:'shot', speed:320, range:long, dmg:28, color:'#fb7185', cast:0.45},
-        {slot:2,name:'Ice Nova',    cost:18, cd:8.0, type:'nova', range:70,  dmg:18, cast:0.55, cc:'slow'},
-        {slot:3,name:'Chain Bolt',  cost:20, cd:6.0, type:'line', range:mid, dmg:24, cast:0.50},
+        {slot:1,name:'Fireball',    cost:14, cd:1.5, type:'shot', speed:320, range:long, dmg:28, color:'#fb7185', cast:0.45, splash:60},
+        {slot:2,name:'Ice Nova',    cost:18, cd:8.0, type:'nova', range:70,  dmg:18, cast:0.55, cc:'root', root:1.4},
+        {slot:3,name:'Chain Bolt',  cost:20, cd:6.0, type:'chain',range:mid, dmg:24, cast:0.50, jumps:2, chainR:120},
       ],
       rogue:[
         {slot:1,name:'Dagger Toss', cost:4,  cd:0.7, type:'shot', speed:380, range:mid,  dmg:16, color:'#f59e0b', crit:true},
-        {slot:2,name:'Vanish',      cost:6,  cd:10.0,type:'stealth', duration:1.8},
+        {slot:2,name:'Vanish',      cost:6,  cd:12.0,type:'stealth', duration:3.0},
       ],
       cleric:[
         {slot:1,name:'Heal',        cost:10, cd:2.8, type:'heal', amount:36},
@@ -429,128 +456,5 @@ export class Player {
 
   cast(slot, world, mouse){
     const skill=this.skills().find(s=>s.slot===slot); if(!skill) return;
-    if((this.cooldowns[slot]||0) > 0) { log(`${skill.name} cooling down`); return; }
-    if((skill.cost||0) > this.mp){ log('Not enough MP'); return; }
+    if((this.cooldowns[slot]||0) > 0) { log(`${s
 
-    const aimDir=Math.atan2(mouse.wy-this.y, mouse.wx-this.x);
-
-    const fire=()=>{
-      // pay cost, start cooldown
-      this.mp -= (skill.cost||0);
-      this.cooldowns[slot] = skill.cd || 0;
-      this.updateHUD(); this.updateSkillsUI();
-
-      if(skill.type==='shot'){
-        const speed=skill.speed||320, range=skill.range||300;
-        const life = range / speed;
-        const dmg = this.scaledDamage((skill.dmg||16)/16);
-        world.projectiles.push({
-          x:this.x+Math.cos(aimDir)*14, y:this.y+Math.sin(aimDir)*14,
-          vx:Math.cos(aimDir)*speed, vy:Math.sin(aimDir)*speed,
-          dmg, life, color:skill.color, dot:3, radius:12
-        });
-      }else if(skill.type==='line'){
-        const len=skill.range||260, dmg=this.scaledDamage((skill.dmg||24)/16);
-        const ax=this.x, ay=this.y, bx=ax+Math.cos(aimDir)*len, by=ay+Math.sin(aimDir)*len;
-        for(const e of world.enemies){
-          const u=Math.max(0,Math.min(1,((e.x-ax)*(bx-ax)+(e.y-ay)*(by-ay))/((bx-ax)**2+(by-ay)**2)));
-          const cx=ax+(bx-ax)*u, cy=ay+(by-ay)*u;
-          if(Math.hypot(e.x-cx,e.y-cy) < 12){ e.hp-=dmg; world.addFloater(e.x,e.y,String(dmg),'#fde68a'); }
-        }
-      }else if(skill.type==='nova'){
-        const r=skill.range||60, dmg=this.scaledDamage((skill.dmg||16)/16); let n=0;
-        for(const e of world.enemies){
-          if(Math.hypot(e.x-this.x,e.y-this.y) <= r){ e.hp-=dmg; n++; world.addFloater(e.x,e.y,String(dmg),'#a7f3d0'); }
-        }
-        if(skill.cc==='slow'){ /* hook for slow */ }
-      }else if(skill.type==='trap'){
-        const tx=mouse.wx, ty=mouse.wy;
-        if(Math.hypot(tx-this.x, ty-this.y) <= (skill.range||70)){
-          const dmg=this.scaledDamage((skill.dmg||14)/16);
-          for(const e of world.enemies){ if(Math.hypot(e.x-tx,e.y-ty)<26){ e.hp-=dmg; world.addFloater(e.x,e.y,String(dmg),'#a7f3d0'); } }
-        }
-      }else if(skill.type==='heal'){
-        const amt=skill.amount||30; this.hp=Math.min(this.maxhp,this.hp+amt); world.addFloater(this.x,this.y-18,'+'+amt,'#86efac');
-      }else if(skill.type==='ward'){
-        this.iframe=Math.max(this.iframe, skill.duration||0.8); log('Ward up');
-      }else if(skill.type==='stealth'){
-        this.stealth=Math.max(this.stealth, skill.duration||1.8); log('Vanish!');
-      }else if(skill.type==='dash'){
-        const dash=90; world.moveWithCollide(this, Math.cos(this.dir)*dash, Math.sin(this.dir)*dash);
-      }
-    };
-
-    const castTime = skill.cast || (this.className==='mage' ? 0.35 : this.className==='cleric' ? 0.25 : 0.10);
-    if(skill.type==='shot' || skill.type==='line'){ world.telegraphs.push({type:'aim', ttl:castTime, fire}); }
-    else if(skill.type==='nova'){ world.telegraphs.push({type:'circle', x:this.x,y:this.y, r:skill.range||60, ttl:castTime, fire}); }
-    else { world.telegraphs.push({type:'aim', ttl:castTime, fire}); }
-  }
-
-  scaledDamage(mult){
-    const base=this.baseDmg;
-    const stat = this.scale==='STR'? this.base.STR :
-                 this.scale==='AGI'? this.base.AGI :
-                 this.scale==='INT'? this.base.INT : this.base.WIS;
-    return Math.floor(base * mult * (1 + stat*0.05));
-  }
-
-  dodge(world){
-    if(this.rollCD>0) return;
-    const dash=110; world.moveWithCollide(this, Math.cos(this.dir)*dash, Math.sin(this.dir)*dash);
-    this.iframe=this.iframeDur; this.rollCD=this.rollCooldown;
-    log(`Dodge (${this.className})`);
-  }
-
-  hit(d, world){
-    if(this.iframe>0) return;
-    this.hp = Math.max(0, this.hp - d);
-    world.addFloater(this.x, this.y-18, '-'+d, '#f87171');
-    if(this.hp===0){ this.hp = Math.floor(this.maxhp*0.7); this.x=12*24; this.y=12*24; log('You were defeated. Respawned.'); }
-    this.updateHUD();
-  }
-
-  update(dt, world){
-    if(this.iframe>0) this.iframe-=dt;
-    if(this.rollCD>0) this.rollCD-=dt;
-    if(this.atkTimer>0) this.atkTimer-=dt;
-    if(this.stealth>0) this.stealth-=dt;
-
-    // cooldowns tick
-    let changed=false;
-    for(const k of Object.keys(this.cooldowns)){
-      if(this.cooldowns[k]>0){ this.cooldowns[k]-=dt; if(this.cooldowns[k]<0) this.cooldowns[k]=0; changed=true; }
-    }
-    if(changed) this.updateSkillsUI();
-
-    while(this.xp >= 100*this.lv){
-      this.xp -= 100*this.lv; this.lv++; this.points += 2;
-      this.applyClass(); world.addFloater(this.x,this.y-18,'LEVEL UP','#86efac');
-    }
-
-    this.mp = Math.min(this.maxmp, (this.mp||0) + 4*dt);
-    this.updateHUD();
-  }
-
-  updateHUD(){
-    const hpnum=document.getElementById('hpNum'), mpnum=document.getElementById('mpNum');
-    const hpbar=document.getElementById('hpbar'), mpbar=document.getElementById('mpbar'), xpbar=document.getElementById('xpbar');
-    if(!hpbar) return;
-    hpbar.style.width=(this.hp/this.maxhp*100).toFixed(1)+'%';
-    mpbar.style.width=(this.mp/this.maxmp*100).toFixed(1)+'%';
-    xpbar.style.width=(this.xp%100)+'%';
-    if(hpnum) hpnum.textContent=`${Math.floor(this.hp)}/${this.maxhp}`;
-    if(mpnum) mpnum.textContent=`${Math.floor(this.mp)}/${this.maxmp}`;
-  }
-}
-
-/* ======================================================================= */
-/*                                  Enemy                                   */
-/* ======================================================================= */
-export class Enemy{
-  constructor(type,x,y){
-    this.type=type; this.x=x; this.y=y;
-    this.hp = (type==='Boss') ? 1400 : 60;
-    this.speed = 60;
-    this.aggro = false;
-  }
-}
