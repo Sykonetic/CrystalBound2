@@ -1,3 +1,22 @@
+export const ASSETS = {};
+export function loadAssets(cb){
+  const list = {
+    warrior: 'assets/warrior.png',
+    ranger: 'assets/ranger.png',
+    mage: 'assets/mage.png',
+    rogue: 'assets/rogue.png',
+    slime: 'assets/slime.png',
+    boss: 'assets/boss.png'
+  };
+  let loaded = 0, total = Object.keys(list).length;
+  for(const [k,src] of Object.entries(list)){
+    const img = new Image();
+    img.src = src;
+    img.onload = ()=>{ if(++loaded>=total) cb(); };
+    ASSETS[k] = img;
+  }
+}
+
 // src/engine.js
 import { World } from './world.js';
 
