@@ -31,8 +31,8 @@
   <div class="panel pad">
     <div class="row"><h3 style="margin:0">Crystalbound</h3><div class="muted">ARPG Prototype</div></div>
     <div class="muted" style="margin-top:6px">
-      Move <span class="kbd">WASD / Arrows</span> • Run <span class="kbd">Shift</span> • Dodge <span class="kbd">Space</span> • Attack <span class="kbd">J</span> • Skills <span class="kbd">1–4</span><br/>
-      Switch Class Sprites: <span class="kbd">F1</span> Warrior, <span class="kbd">F2</span> Ranger, <span class="kbd">F3</span> Mage, <span class="kbd">F4</span> Rogue
+      Move <span class="kbd">WASD / Arrows</span> • Run <span class="kbd">Shift</span> • Dodge <span class="kbd">Space</span> • Attack <span class="kbd">J</span><br/>
+      Swap class sprite: <span class="kbd">F1</span> Warrior • <span class="kbd">F2</span> Ranger • <span class="kbd">F3</span> Mage • <span class="kbd">F4</span> Rogue
     </div>
     <div style="margin-top:10px">
       <div class="muted">HP</div><div class="bar"><span id="hpbar" style="width:100%"></span></div>
@@ -46,7 +46,6 @@
       <button id="btnRebind">Rebind Selected</button>
       <button id="btnResetBinds">Reset Binds</button>
     </div>
-    <div class="muted" style="margin-top:6px">Select an action, click Rebind, then press a key.</div>
 
     <h4 style="margin-top:14px">Multiplayer</h4>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
@@ -62,7 +61,6 @@
   </div>
 </div>
 
-<!-- Boot the game (imports the JS modules from /src) -->
 <script type="module">
   import { Game, loadAssets } from './src/engine.js';
   import { setupUI } from './src/ui.js';
@@ -70,22 +68,19 @@
 
   const canvas = document.getElementById('view');
 
-  // Load generated sprites first, then start the game.
   loadAssets(() => {
     const game = new Game(canvas);
     const net = new Net(game);
     setupUI(game, net);
 
-    // Default class (you can change at runtime with F1–F4)
+    // default class + hot-swap to preview sprites
     game.player.className = 'warrior';
-
-    // Quick sprite toggle to preview classes
     window.addEventListener('keydown', (e) => {
       const map = { F1:'warrior', F2:'ranger', F3:'mage', F4:'rogue' };
       const chosen = map[e.key];
       if (chosen) {
         game.player.className = chosen;
-        const el = document.getElementById('log');
+        const el=document.getElementById('log');
         el.textContent = ('Class switched to ' + chosen.toUpperCase() + "\n" + el.textContent).slice(0,9000);
       }
     });
@@ -94,8 +89,7 @@
       'Loaded. WASD move • Shift run • Space dodge (i‑frames) • J attack • F1–F4 swap class sprite.';
     game.start();
 
-    // handy: inspect game in DevTools
-    window.__game = game;
+    window.__game = game; // handy for console tests
   });
 </script>
 </body>
