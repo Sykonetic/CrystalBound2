@@ -84,35 +84,43 @@
 </div>
 
 <script type="module">
-  import { Game, loadAssets } from './src/engine.js';
-  import { setupUI } from './src/ui.js';
-  import { Net } from './src/net.js';
+import { Game } from './src/engine.js';
+import { Net } from './src/net.js';
+import { setupUI } from './src/ui.js';
 
-  const canvas = document.getElementById('view');
+const canvas = document.getElementById('gameCanvas');
 
-  loadAssets(() => {
+loadAssets(() => {
     const game = new Game(canvas);
     const net = new Net(game);
     setupUI(game, net);
 
-    // class picker: blocks game until click
+    // ---- robust class picker ----
     const ov = document.getElementById('classOverlay');
-    document.querySelectorAll('.cbtn').forEach(btn=>{
-      btn.addEventListener('click', ()=>{
-        const cls = btn.getAttribute('data-class');
-        game.player.setClass(cls);
-        ov.style.display='none';
+    function log(m){
+        const el=document.getElementById('log');
+        if(el) el.textContent=(m+"\n"+el.textContent).slice(0,9000);
+    }
+
+    function setClassSafe(cls){
+        const p = (game && game.world && game.world.player) || game?.player;
+        if(!p){
+            console.error('Player not ready yet; delaying class set');
+            requestAnimationFrame(()=>setClassSafe(cls));
+            return;
+        }
+        if(typeof p.setClass === 'function') p.setClass(cls);
+        else { p.className = cls; if(typeof p.applyClass==='function') p.applyClass(); }
+
+        if(ov && ov.parentNode) ov.parentNode.removeChild(ov);
         log('Class set to ' + cls.toUpperCase());
-      });
+    }
+
+    document.querySelectorAll('.cbtn').forEach(btn=>{
+        btn.addEventListener('click', () => setClassSafe(btn.getAttribute('data-class')));
     });
-
-    function log(m){ const el=document.getElementById('log'); el.textContent=(m+"\n"+el.textContent).slice(0,9000); }
-
-    document.getElementById('log').textContent =
-      'Pick a class to begin. WASD move • Shift toggles run • Space dodge (i‑frames) • J attack.';
-    game.start();
-    window.__game = game;
-  });
+});
 </script>
+
 </body>
 </html>
